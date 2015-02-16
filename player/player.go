@@ -16,57 +16,43 @@ import (
 )
 
 const (
-	MEMYIELD           = 0.4
-	CYCLEYIELD         = 0.5
-	TIMEDELIM          = "@"
-	TIMETPL            = "%d@%d"
-	STARTMEM           = 50
-	STARTCYC           = 1000
-	ACTIVEMEMMAX       = 10
-	LIMIT              = 100
-	THUMBSIZE          = 32
-	EMAILREGEX         = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
-	NICKREGEX          = `^[a-zA-Z0-9_.-]*$`
-	TIMELAYOUT         = "2006-Jan-02"
-	USERTYPE     int64 = 1024
-	REGULAR      int64 = USERTYPE << iota
-	PUSER        int64 = USERTYPE << iota
-	PCLAN        int64 = USERTYPE << iota
-	MOD          int64 = USERTYPE << iota
-	ADMIN        int64 = USERTYPE << iota
-	DEAD         int64 = 0x2800
-	LIVE         int64 = 0x2800 << 1
-	SUSPENDED    int64 = 0x2800 << 2
+	MEMYIELD     = 0.4
+	CYCLEYIELD   = 0.5
+	TIMEDELIM    = "@"
+	TIMETPL      = "%d@%d"
+	STARTMEM     = 50
+	STARTCYC     = 1000
+	ACTIVEMEMMAX = 10
+	LIMIT        = 100
+	THUMBSIZE    = 32
+	EMAILREGEX   = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
+	NICKREGEX    = `^[a-zA-Z0-9_.-]*$`
 )
 
 var (
-	emailMatcher, _  = regexp.Compile(EMAILREGEX)
-	nickMatcher, _   = regexp.Compile(NICKREGEX)
-	PlayerStatusName = map[int64]string{
-		DEAD:      "Killed",
-		LIVE:      "Live",
-		SUSPENDED: "Suspended",
-	}
-	PlayerStatus = map[string]int64{
-		"Killed":    DEAD,
-		"Live":      LIVE,
-		"Suspended": SUSPENDED,
-	}
-	PlayerTypeName = map[int64]string{
-		REGULAR: "Free Player",
-		PUSER:   "Subscribed Player",
-		PCLAN:   "Subscribed Clan",
-		MOD:     "Moderator",
-		ADMIN:   "Administrator",
-	}
-	PlayerType = map[string]int64{
-		"Free Player":       REGULAR,
-		"Subscribed Player": PUSER,
-		"Subscribed Clan":   PCLAN,
-		"Moderator":         MOD,
-		"Administrator":     ADMIN,
-	}
+	emailMatcher, _ = regexp.Compile(EMAILREGEX)
+	nickMatcher, _  = regexp.Compile(NICKREGEX)
 )
+
+type PlayerProgramGroup struct {
+	Yield    int64            `json:"yield"`
+	Usage    float64          `json:"usage"`
+	Power    bool             `json:"power"`
+	Programs []*PlayerProgram `json:"programs"`
+	Type     string           `json:"type"`
+}
+
+//parent = player
+type PlayerProgram struct {
+	Amount     int64          `json:"amount"`
+	ProgramKey *datastore.Key `json:"-"`
+	Usage      float64        `json:"usage" datastore:"-"`
+	Yield      int64          `json:"yield" datastore:"-"`
+	Key        *datastore.Key `json:"-" datastore:"-"`
+	Expires    time.Time      `datastore:",noindex" json:"expires"`
+	Active     bool           `json:"active"`
+	*program.Program
+}
 
 type Player struct {
 	EncodedKey       string                        `datastore:"-" json:"key"`
@@ -112,26 +98,6 @@ type Player struct {
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"programs, omitempty" datastore:"-"`
 	Cleanup          []*datastore.Key              `json:"-" datastore:"-"`
-}
-
-type PlayerProgramGroup struct {
-	Yield    int64            `json:"yield"`
-	Usage    float64          `json:"usage"`
-	Power    bool             `json:"power"`
-	Programs []*PlayerProgram `json:"programs"`
-	Type     string           `json:"type"`
-}
-
-//parent = player
-type PlayerProgram struct {
-	Amount     int64          `json:"amount"`
-	ProgramKey *datastore.Key `json:"-"`
-	Usage      float64        `json:"usage" datastore:"-"`
-	Yield      int64          `json:"yield" datastore:"-"`
-	Key        *datastore.Key `json:"-" datastore:"-"`
-	Expires    time.Time      `datastore:",noindex" json:"expires"`
-	Active     bool           `json:"active"`
-	*program.Program
 }
 
 func RangeForPlayer(player *Player) (float64, float64) {

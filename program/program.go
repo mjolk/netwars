@@ -5,6 +5,7 @@ import (
 	"appengine/datastore"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"mj0lk.be/netwars/cache"
 	"strings"
@@ -45,6 +46,26 @@ var ProgramType = map[string]int64{
 	"Intelligence":  64,
 	"Ice":           128,
 	"Infect":        256,
+}
+
+type ProgramMap struct {
+	//lock sync.RWMutex
+	m map[string]*Program
+}
+
+var memprograms *ProgramMap = &ProgramMap{m: make(map[string]*Program)}
+
+func (s *ProgramMap) Get(key string) (*Program, bool) {
+	//s.lock.RLock()
+	//defer s.lock.RUnlock()
+	value, ok := s.m[key]
+	return value, ok
+}
+
+func (s *ProgramMap) Set(key string, value *Program) {
+	//s.lock.Lock()
+	//defer s.lock.Unlock()
+	s.m[key] = value
 }
 
 type Program struct {
@@ -88,6 +109,7 @@ func (p *Program) Load(c <-chan datastore.Property) error {
 }
 
 func (p *Program) Save(c chan<- datastore.Property) error {
+	//defer close(c)
 	if p.Created.IsZero() {
 		p.Created = time.Now()
 	}
@@ -105,8 +127,12 @@ func (p *Program) Save(c chan<- datastore.Property) error {
 
 func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
 	stringId := pKey.StringID()
+	if program, ok := memprograms.Get(stringId); ok {
+		c.Debugf("program from L1 cache --\n")
+		return program, nil
+	}
 	program := new(Program)
-	if !cache.Get(c, stringId, program) {
+	if cache.Get(c, stringId, program) {
 		if err := datastore.Get(c, pKey, program); err != nil {
 			c.Debugf("program from store -- %s\n", err)
 			return nil, err
@@ -116,6 +142,7 @@ func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
 		program.EncodedKey = pKey.Encode()
 		cache.Set(c, stringId, program)
 	}
+	memprograms.Set(stringId, program)
 	return program, nil
 }
 
@@ -136,6 +163,7 @@ func GetAll(c appengine.Context, programs map[string][]*Program) error {
 	for t := qp.Run(c); ; {
 		var p Program
 		key, err := t.Next(&p)
+		fmt.Printf("programs search: %v", p)
 		if err == datastore.Done {
 			break
 		} else if err != nil {
@@ -151,6 +179,7 @@ func GetAll(c appengine.Context, programs map[string][]*Program) error {
 }
 
 func LoadFromFile(c appengine.Context) error {
+	var errString string
 	file, err := ioutil.ReadFile("programs.json")
 	if err != nil {
 		return err
@@ -161,8 +190,11 @@ func LoadFromFile(c appengine.Context) error {
 	for _, program := range jsontype {
 		if err := CreateOrUpdate(c, &program); err != nil {
 			c.Debugf("error %s", err)
-			return err
+			errString += fmt.Sprintf("%s\n", err.Error())
 		}
+	}
+	if len(errString) > 0 {
+		return errors.New(errString)
 	}
 	return nil
 }
@@ -197,6 +229,7 @@ func CreateOrUpdate(c appengine.Context, program *Program) error {
 		return err
 	}
 	//get for development
+	c.Debugf("pkey: %v", pkey)
 	if _, err := KeyGet(c, pkey); err != nil {
 		return err
 	}

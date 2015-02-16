@@ -1,18 +1,18 @@
-package user
+package player
 
 import (
 	"appengine"
 	"appengine/aetest"
 	"appengine/datastore"
 	"errors"
-	"netwars/program"
-	"netwars/testutils"
+	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/testutils"
 	"testing"
 	"time"
 )
 
 const (
-	TESTNICK  = "testnick"
+	aTESTNICK = "testnick"
 	TESTEMAIL = "2mjolk@gmail.com"
 	PROGRAM1  = "Swarm connector"
 	PROGRAM2  = "Swarm mark IV"

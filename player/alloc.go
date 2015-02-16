@@ -1,4 +1,4 @@
-package user
+package player
 
 import (
 	"appengine"
@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"netwars/program"
-	"netwars/utils"
+	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/utils"
 	"strconv"
 	"time"
 )

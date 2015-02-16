@@ -2,26 +2,26 @@ package user
 
 import (
 	"appengine"
-	"appengine/blobstore"
-	"appengine/datastore"
-	"appengine/image"
-	"fmt"
+	//"appengine/blobstore"
+	//"appengine/datastore"
+	//"appengine/image"
+	//"fmt"
 	"netwars/cache"
 	"strconv"
 	"time"
 )
 
 const (
-	TIMELAYOUT       = "2006-Jan-02"
-	USERTYPE   int64 = 1024
-	REGULAR    int64 = USERTYPE << iota
-	PUSER      int64 = USERTYPE << iota
-	PCLAN      int64 = USERTYPE << iota
-	MOD        int64 = USERTYPE << iota
-	ADMIN      int64 = USERTYPE << iota
-	DEAD       int64 = 0x2800
-	LIVE       int64 = 0x2800 << 1
-	SUSPENDED  int64 = 0x2800 << 2
+	//TIMELAYOUT       = "2006-Jan-02"
+	USERTYPE  int64 = 1024
+	REGULAR   int64 = USERTYPE << iota
+	PUSER     int64 = USERTYPE << iota
+	PCLAN     int64 = USERTYPE << iota
+	MOD       int64 = USERTYPE << iota
+	ADMIN     int64 = USERTYPE << iota
+	DEAD      int64 = 0x2800
+	LIVE      int64 = 0x2800 << 1
+	SUSPENDED int64 = 0x2800 << 2
 )
 
 var PlayerStatusName = map[int64]string{
@@ -52,7 +52,7 @@ var PlayerType = map[string]int64{
 	"Administrator":     ADMIN,
 }
 
-type PublicProfile struct {
+type Profile struct {
 	Nick           string  `json:"nick"`
 	BandwidthUsage float64 `json:"bandwidth_usage"`
 	Status         int64   `json:"-"`
@@ -66,7 +66,7 @@ type PublicProfile struct {
 }
 
 type ProfileUpdate struct {
-	Pkey      string `json:"pkey"`
+	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Birthday  string `json:"birthday"`
 	Country   string `json:"country"`
@@ -83,8 +83,8 @@ type PlayerNotification struct {
 }
 
 type PlayerList struct {
-	Cursor  string           `json:"c"`
-	Players []*PublicProfile `json:"players"`
+	Cursor  string     `json:"c"`
+	Players []*Profile `json:"players"`
 }
 
 //parent profile
@@ -97,7 +97,7 @@ type PlayerSubscription struct {
 	SubscriptionType int64
 }
 
-func (p *PublicProfile) Load(c <-chan datastore.Property) error {
+func (p *Profile) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(p, c); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (p *PublicProfile) Load(c <-chan datastore.Property) error {
 	return nil
 }
 
-func (p *PublicProfile) Save(c chan<- datastore.Property) error {
+func (p *Profile) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(p, c)
 }
 
@@ -122,7 +122,7 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 	if err != nil {
 		return nil, err
 	}
-	profiles := make([]*PublicProfile, 0, LIMIT)
+	profiles := make([]*Profile, 0, LIMIT)
 	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
 		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	if attackRange {
@@ -143,7 +143,7 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 	}
 	t := q.Run(c)
 	for {
-		var profile PublicProfile
+		var profile Profile
 		_, err := t.Next(&profile)
 		if err == datastore.Done {
 			break
@@ -166,7 +166,7 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 }
 
 func UpdateProfile(c appengine.Context, update ProfileUpdate) error {
-	playerKey, err := datastore.DecodeKey(update.Pkey)
+	playerKey, err := datastore.DecodeKey(update.Key)
 	if err != nil {
 		return err
 	}
