@@ -2,26 +2,26 @@ package user
 
 import (
 	"appengine"
-	//"appengine/blobstore"
-	//"appengine/datastore"
-	//"appengine/image"
-	//"fmt"
-	"netwars/cache"
+	"appengine/blobstore"
+	"appengine/datastore"
+	"appengine/image"
+	"fmt"
+	"mj0lk.be/netwars/cache"
 	"strconv"
 	"time"
 )
 
 const (
-	//TIMELAYOUT       = "2006-Jan-02"
-	USERTYPE  int64 = 1024
-	REGULAR   int64 = USERTYPE << iota
-	PUSER     int64 = USERTYPE << iota
-	PCLAN     int64 = USERTYPE << iota
-	MOD       int64 = USERTYPE << iota
-	ADMIN     int64 = USERTYPE << iota
-	DEAD      int64 = 0x2800
-	LIVE      int64 = 0x2800 << 1
-	SUSPENDED int64 = 0x2800 << 2
+	TIMELAYOUT       = "2006-Jan-02"
+	USERTYPE   int64 = 1024
+	REGULAR    int64 = USERTYPE << iota
+	PUSER      int64 = USERTYPE << iota
+	PCLAN      int64 = USERTYPE << iota
+	MOD        int64 = USERTYPE << iota
+	ADMIN      int64 = USERTYPE << iota
+	DEAD       int64 = 0x2800
+	LIVE       int64 = 0x2800 << 1
+	SUSPENDED  int64 = 0x2800 << 2
 )
 
 var PlayerStatusName = map[int64]string{
