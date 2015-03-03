@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	aTESTNICK = "testnick"
+	TESTNICK  = "testnick"
 	TESTEMAIL = "2mjolk@gmail.com"
 	PROGRAM1  = "Swarm connector"
 	PROGRAM2  = "Swarm mark IV"
@@ -78,7 +78,7 @@ func TestUpdateProfile(t *testing.T) {
 		t.Fatalf("Unexpected user error creating player: %v \n", usererr)
 	}
 	profileUpdate := ProfileUpdate{
-		Pkey:      playerKeyStr,
+		Key:       playerKeyStr,
 		Name:      "Dries",
 		Birthday:  "1979-Apr-13",
 		Country:   "Belgium",
@@ -146,9 +146,9 @@ func setupProgram(c appengine.Context) error {
 	return nil
 }
 
-func checkProgram(t *testing.T, status *PlayerState, name string, amount int64) {
-	for _, group := range status.Programs {
-		t.Logf("--------------------------- %+v \n", group)
+func checkProgram(t *testing.T, player *Player, name string, amount int64) {
+	for _, group := range player.Programs {
+		t.Logf("---------------------------\n  %+v \n", group)
 		t.Logf("| group usage : %d |\n", group.Usage)
 		t.Logf("| group Yield : %d |\n", group.Yield)
 		t.Logf("| group.Power %s |\n", group.Power)
@@ -187,11 +187,11 @@ func TestAllocate(t *testing.T) {
 	if err := Allocate(c, playerKeyStr, programKey.Encode(), "5"); err != nil {
 		t.Fatalf("allocate2 error :%+v \n", err)
 	}
-	status := new(PlayerState)
-	if _, err := Status(c, playerKeyStr, status); err != nil {
+	player := new(Player)
+	if err := Status(c, playerKeyStr, player); err != nil {
 		t.Fatalf(" status err : %s", err)
 	}
-	checkProgram(t, status, PROGRAM2, 5)
+	checkProgram(t, player, PROGRAM2, 5)
 	testutils.CheckQueue(c, t, 2)
 }
 
@@ -218,20 +218,20 @@ func TestDeallocate(t *testing.T) {
 		t.Fatalf("allocate error: %s \n", err)
 	}
 
-	status := new(PlayerState)
-	if _, err := Status(c, playerKeyStr, status); err != nil {
+	player := new(Player)
+	if err := Status(c, playerKeyStr, player); err != nil {
 		t.Fatalf(" status err : %s", err)
 	}
-	checkProgram(t, status, PROGRAM2, 5)
+	checkProgram(t, player, PROGRAM2, 5)
 
 	if err := Deallocate(c, playerKeyStr, programKey.Encode(), "3"); err != nil {
 		t.Fatalf("deallocation error: %s \n", err)
 	}
 
-	if _, err := Status(c, playerKeyStr, status); err != nil {
+	if err := Status(c, playerKeyStr, player); err != nil {
 		t.Fatalf(" status err : %s", err)
 	}
-	checkProgram(t, status, PROGRAM2, 2)
+	checkProgram(t, player, PROGRAM2, 2)
 	testutils.CheckQueue(c, t, 3)
 }
 

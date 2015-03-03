@@ -94,7 +94,21 @@ func (p *Program) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(p, c); err != nil {
 		return err
 	}
-	//load stuff
+	Load(p)
+	return nil
+}
+
+func (p *Program) Save(c chan<- datastore.Property) error {
+	//defer close(c)
+	if p.Created.IsZero() {
+		p.Created = time.Now()
+	}
+	Save(p)
+	p.Updated = time.Now()
+	return datastore.SaveStruct(p, c)
+}
+
+func Load(p *Program) {
 	for tpeKey, tpe := range ProgramName {
 		if tpeKey == tpeKey&p.EffectorTypes {
 			p.Effectors = append(p.Effectors, tpe)
@@ -105,14 +119,9 @@ func (p *Program) Load(c <-chan datastore.Property) error {
 	}
 	p.TypeName = ProgramName[p.Type]
 	p.BandwidthUsage = (1 / p.Memory) * float64(p.Cycles)
-	return nil
 }
 
-func (p *Program) Save(c chan<- datastore.Property) error {
-	//defer close(c)
-	if p.Created.IsZero() {
-		p.Created = time.Now()
-	}
+func Save(p *Program) {
 	p.Type = ProgramType[p.TypeName]
 	if len(p.Effectors) > 0 {
 		p.EffectorTypes = 0
@@ -121,8 +130,6 @@ func (p *Program) Save(c chan<- datastore.Property) error {
 
 		}
 	}
-	p.Updated = time.Now()
-	return datastore.SaveStruct(p, c)
 }
 
 func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
@@ -132,7 +139,7 @@ func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
 		return program, nil
 	}
 	program := new(Program)
-	if cache.Get(c, stringId, program) {
+	if !cache.Get(c, stringId, program) {
 		if err := datastore.Get(c, pKey, program); err != nil {
 			c.Debugf("program from store -- %s\n", err)
 			return nil, err

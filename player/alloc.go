@@ -4,23 +4,16 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"errors"
-	"fmt"
 	"math"
+	"mj0lk.be/netwars/event"
+	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
-	"mj0lk.be/netwars/utils"
 	"strconv"
 	"time"
 )
 
-type Allocation struct {
-	Player  *datastore.Key
-	Created time.Time
-	Program *datastore.Key
-	Amount  int64
-	Action  string
-}
-
 var NotEnoughBandwidthError = errors.New("not enough bandwidth for programtype")
+var NoProgramToDeallocate = errors.New("Error: no programs to deallocate")
 
 func PlayerProgramKey(c appengine.Context, playerKey, programKey *datastore.Key) *datastore.Key {
 	return datastore.NewKey(c, "PlayerProgram", programKey.StringID(), 0, playerKey)
@@ -70,7 +63,7 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 			}
 		}
 		pProg := &PlayerProgram{
-			Program:    prog,
+			Program:    *prog,
 			ProgramKey: programKey,
 			Key:        pprogramKey,
 			Active:     true,
@@ -87,39 +80,25 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 		memory := int64(prog.Memory * float64(iAmount))
 		player.Memory -= memory
 		player.Cycles -= cycles
-		cleanUp := len(player.Cleanup) > 0
-		clChan := make(chan int)
-		if cleanUp {
-			go func() {
-				if err := datastore.DeleteMulti(c, player.Cleanup); err != nil {
-					c.Errorf("error cleanup while allocating")
-				}
-				clChan <- 0
-			}()
-		}
 		keys := []*datastore.Key{player.Key, pProg.Key}
 		models := []interface{}{player, pProg}
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		if cleanUp {
-			<-clChan
-		}
 		e := event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
-			Direction:         utils.OUT,
+			Direction:         event.OUT,
 			EventType:         "Allocate",
 			TargetName:        player.Nick,
 			TargetID:          player.PlayerID,
-			NewBandwidthUsage: player.BandwidthUsage + (iAmount * pProg.BandwidthUsage),
+			NewBandwidthUsage: player.BandwidthUsage + (float64(iAmount) * pProg.BandwidthUsage),
 			Memory:            memory,
 			Action:            "Allocate",
 			Cycles:            cycles,
-			EventPrograms:     []event.EventProgram{event.EventProgram{pProg.Name, iAmount, true}},
+			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		c.Debugf("sending event: %+v \n", e)
-		if err := msg.Send(c, []Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []event.Event{e}, AllocateEvent); err != nil {
 			return err
 		}
 		return nil
@@ -138,28 +117,27 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 		return errors.New("Can't dealloc INFECT program")
 	}
 	return datastore.RunInTransaction(c, func(c appengine.Context) error {
-		state := new(PlayerState)
-		cleanUpKeys, err := Status(c, playerStr, state)
+		player := new(Player)
+		err := Status(c, playerStr, player)
 		if err != nil {
 			return err
 		}
-		player := state.Player
 		var pProg *PlayerProgram
 		pprogramKey := PlayerProgramKey(c, playerKey, programKey)
-		if pProgs, ok := state.Programs[prog.Type]; ok {
+		if pProgs, ok := player.Programs[prog.Type]; ok {
 			for _, pp := range pProgs.Programs {
 				if pp.Key.Equal(pprogramKey) {
 					pProg = pp
 				}
 			}
 		} else {
-			return errors.New("Error: no programs to deallocate")
+			return NoProgramToDeallocate
 		}
 		if pProg == nil {
-			return errors.New("Error: no programs to deallocate")
+			return NoProgramToDeallocate
 		}
 		if pProg.Amount == 0 {
-			return errors.New("Error: no programs to deallocate")
+			return NoProgramToDeallocate
 		}
 		pProg.Amount -= iAmount
 		cycles := int64(float64(pProg.Cycles) * float64(iAmount) * CYCLEYIELD)
@@ -168,54 +146,40 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 		player.Memory += memory
 		keys := []*datastore.Key{playerKey, pprogramKey}
 		models := []interface{}{player, pProg}
-		cleanUp := len(cleanUpKeys) > 0
-		clChan := make(chan int)
-		if cleanUp {
-			go func() {
-				if err := datastore.DeleteMulti(c, cleanUpKeys); err != nil {
-					c.Errorf("error cleanup while allocating")
-				}
-				clChan <- 0
-			}()
-		}
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
-		}
-		if cleanUp {
-			<-clChan
 		}
 		e := event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
-			Direction:         utils.OUT,
+			Direction:         event.OUT,
 			EventType:         "Allocate",
-			Amount:            iAmount,
 			TargetName:        player.Nick,
 			TargetID:          player.PlayerID,
-			NewBandwidthUsage: player.BandwidthUsage - (iAmount * pProg.BandwidthUsage),
+			NewBandwidthUsage: player.BandwidthUsage - (float64(iAmount) * pProg.BandwidthUsage),
 			Memory:            memory,
 			Action:            "Deallocate",
 			Cycles:            cycles,
-			EventPrograms:     []event.EventProgram{event.EventProgram{pProg.Name, iAmount, true}},
+			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		if err := event.Send(c, []Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []event.Event{e}, AllocateEvent); err != nil {
 			return err
 		}
 		return nil
 	}, nil)
 }
 
-func AllocateEvent(c appengine.Context, events event.Message) error {
+func AllocateEvent(c appengine.Context, events []event.Event) error {
 	e := events[0]
 	cntCh := make(chan int64)
-	go NewEventID(c, cntCh)
+	go event.NewEventID(c, cntCh)
 	e.Result = true
 	leGuid, err := guid.GenUUID()
 	if err != nil {
 		return err
 	}
 	localId := datastore.NewKey(c, "Event", leGuid, 0, nil)
-	event.ID = <-cntCh
+	e.ID = <-cntCh
 	if _, err := datastore.Put(c, localId, e); err != nil {
 		c.Debugf("error saving event %s \n", err)
 		return err

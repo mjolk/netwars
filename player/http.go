@@ -5,23 +5,9 @@ import (
 	"appengine/blobstore"
 	"encoding/json"
 	"fmt"
+	"mj0lk.be/netwars/utils"
 	"net/http"
-	"netwars/utils"
 )
-
-func init() {
-	r := utils.Router()
-	s := r.PathPrefix("/players").Subrouter()
-	s.HandleFunc("/", CreatePlayer).Methods("POST")
-	s.HandleFunc("/status", StatusPlayer).Methods("GET").Headers("Accept", "application/json").Queries("pkey", "")
-	s.HandleFunc("/allocation", AllocatePrograms).Methods("POST")
-	s.HandleFunc("/deallocation", DeallocatePrograms).Methods("POST")
-	s.HandleFunc("/", GetPlayerList).Methods("GET").Queries("pkey", "")
-	s.HandleFunc("/avatar", UploadAvatar).Methods("GET")
-	s.HandleFunc("/avatar", EditAvatar).Methods("POST")
-	s.HandleFunc("/profile", EditProfile).Methods("POST")
-	//dev to be moved to admin section
-}
 
 // EditProfile edits a player's profile
 // POST http(s)://{netwars host}/player_editprofile
@@ -179,12 +165,12 @@ func GetPlayerList(w http.ResponseWriter, r *http.Request) {
 func StatusPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	playerstr := r.FormValue("pkey")
-	state := &PlayerState{}
+	player := new(Player)
 	var res utils.JSONResult
-	if _, err := Status(c, playerstr, state); err != nil {
+	if err := Status(c, playerstr, player); err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: state}
+		res = utils.JSONResult{Success: true, Result: player}
 	}
 	res.JSONf(w)
 }

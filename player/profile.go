@@ -6,7 +6,6 @@ import (
 	"appengine/datastore"
 	"appengine/image"
 	"fmt"
-	"mj0lk.be/netwars/cache"
 	"strconv"
 	"time"
 )
@@ -75,13 +74,6 @@ type ProfileUpdate struct {
 	Signature string `json:"signature"`
 }
 
-//parent profile
-type PlayerNotification struct {
-	Thread           string `json:"thread"`
-	EventType        string `json:"event_type"`
-	NotificationType string `json:"notification_type"`
-}
-
 type PlayerList struct {
 	Cursor  string     `json:"c"`
 	Players []*Profile `json:"players"`
@@ -130,7 +122,7 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 		if err := datastore.Get(c, playerKey, player); err != nil {
 			return nil, err
 		}
-		rangeLo, rangeHi := RangeForPlayer(player)
+		rangeLo, rangeHi := player.Range()
 		q = q.Filter("BandwidthUsage >", rangeLo).
 			Filter("BandwidthUsage <", rangeHi)
 	}
@@ -189,10 +181,6 @@ func UpdateProfile(c appengine.Context, update ProfileUpdate) error {
 	if _, err := datastore.Put(c, playerKey, player); err != nil {
 		return err
 	}
-	return nil
-}
-
-func UpdateNotifications(c appengine.Context, pkey string, notifications []PlayerNotification) error {
 	return nil
 }
 

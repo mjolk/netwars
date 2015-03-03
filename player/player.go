@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"mj0lk.be/netwars/cache"
 	"mj0lk.be/netwars/counter"
+	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
 	"regexp"
@@ -16,23 +17,43 @@ import (
 )
 
 const (
-	MEMYIELD     = 0.4
-	CYCLEYIELD   = 0.5
-	TIMEDELIM    = "@"
-	TIMETPL      = "%d@%d"
-	STARTMEM     = 50
-	STARTCYC     = 1000
-	ACTIVEMEMMAX = 10
-	LIMIT        = 100
-	THUMBSIZE    = 32
-	EMAILREGEX   = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
-	NICKREGEX    = `^[a-zA-Z0-9_.-]*$`
+	MEMYIELD           = 0.4
+	CYCLEYIELD         = 0.5
+	BWLOWLIMIT         = 0.2
+	BWHILIMIT          = 0.3
+	TIMEDELIM          = "@"
+	TIMETPL            = "%d@%d"
+	STARTMEM           = 50
+	STARTCYC           = 1000
+	ACTIVEMEMMAX       = 10
+	LIMIT              = 100
+	THUMBSIZE          = 32
+	EMAILREGEX         = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
+	NICKREGEX          = `^[a-zA-Z0-9_.-]*$`
+	MEMBER       int64 = 1 << iota
+	LIEUTENANT   int64 = 1 << iota
+	LEADER       int64 = 1 << iota
 )
 
 var (
 	emailMatcher, _ = regexp.Compile(EMAILREGEX)
 	nickMatcher, _  = regexp.Compile(NICKREGEX)
+	MemberName      = map[int64]string{
+		4: "Leader",
+		1: "Member",
+		2: "Lieutenant",
+	}
+
+	MemberType = map[string]int64{
+		"Leader":     4,
+		"Member":     1,
+		"Lieutenant": 2,
+	}
 )
+
+type Unique struct {
+	Created time.Time
+}
 
 type PlayerProgramGroup struct {
 	Yield    int64            `json:"yield"`
@@ -44,6 +65,7 @@ type PlayerProgramGroup struct {
 
 //parent = player
 type PlayerProgram struct {
+	Source     string         `json:"source"`
 	Amount     int64          `json:"amount"`
 	ProgramKey *datastore.Key `json:"-"`
 	Usage      float64        `json:"usage" datastore:"-"`
@@ -51,7 +73,8 @@ type PlayerProgram struct {
 	Key        *datastore.Key `json:"-" datastore:"-"`
 	Expires    time.Time      `datastore:",noindex" json:"expires"`
 	Active     bool           `json:"active"`
-	*program.Program
+	Exp        int64          `json:"experience"`
+	program.Program
 }
 
 type Player struct {
@@ -59,8 +82,8 @@ type Player struct {
 	Key              *datastore.Key                `datastore:"-" json:"-"`
 	Cps              int64                         `json:"cps"`
 	Aps              int64                         `json:"aps"`
-	EncodedMember    string                        `datastore:"-" json:"clan_member"`
-	ClanMember       *datastore.Key                `json:"-"`
+	EncodedClan      string                        `datastore:"-" json:"clan_member"`
+	ClanKey          *datastore.Key                `json:"-"`
 	Cycles           int64                         `datastore:"-" json:"cycles"`
 	Memory           int64                         `datastore:"-" json:"mem"`
 	ActiveMemory     int64                         `datastore:"-" json:"active_mem"`
@@ -70,10 +93,9 @@ type Player struct {
 	Scycles          string                        `datastore:",noindex" json:"-"`
 	Smem             string                        `datastore:",noindex" json:"-"`
 	SactiveMem       string                        `datastore:",noindex" json:"-"`
-	Bandwidth        int64                         `datastore:"-" json:"bandwidth"`
+	Bandwidth        int64                         `json:"bandwidth"`
 	BandwidthUsage   float64                       `json:"bandwidth_usage"`
 	Updated          time.Time                     `json:"updated"`
-	NewLocals        int64                         `json:"new_locals"`
 	Created          time.Time                     `json:"created"`
 	Email            string                        `json:"email"`
 	Nick             string                        `json:"nick"`
@@ -88,8 +110,10 @@ type Player struct {
 	Status           int64                         `json:"-"`
 	StatusName       string                        `json:"status" datastore:"-"`
 	AccessName       string                        `json:"type" datastore:"-"`
-	Clan             string                        `json:"clan"`
+	Clan             string                        `json:"clan" datastore:"-"`
 	ClanTag          string                        `json:"clan_tag"`
+	MemberType       int64                         `json:"-"`
+	Member           string                        `json:"member_type" datastore:"-"`
 	Country          string                        `json:"country"`
 	Language         string                        `json:"language"`
 	Access           int64                         `json:"-"`
@@ -97,12 +121,11 @@ type Player struct {
 	DeviceID         string                        `json:"-" datastore:",noindex"`
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"programs, omitempty" datastore:"-"`
-	Cleanup          []*datastore.Key              `json:"-" datastore:"-"`
 }
 
-func RangeForPlayer(player *Player) (float64, float64) {
-	lo := player.BandwidthUsage - (player.BandwidthUsage * 20.0 / 100.0)
-	hi := player.BandwidthUsage + (player.BandwidthUsage * 30.0 / 100.0)
+func (p Player) Range() (float64, float64) {
+	lo := p.BandwidthUsage - (p.BandwidthUsage * BWLOWLIMIT)
+	hi := p.BandwidthUsage + (p.BandwidthUsage * BWHILIMIT)
 	return lo, hi
 }
 
@@ -123,9 +146,12 @@ func (pp *PlayerProgram) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(pp, c); err != nil {
 		return err
 	}
+	program.Load(&pp.Program)
 	if !pp.Expires.IsZero() {
 		if pp.Expires.Before(time.Now()) {
 			pp.Active = false
+			pp.Expires = time.Time{}
+			pp.Amount = 0
 		}
 	}
 	return nil
@@ -135,6 +161,7 @@ func (pp *PlayerProgram) Save(c chan<- datastore.Property) error {
 	if pp.ProgramKey == nil {
 		return errors.New("program required")
 	}
+	program.Save(&pp.Program)
 	return datastore.SaveStruct(pp, c)
 }
 
@@ -145,15 +172,13 @@ func (p *Player) Load(c <-chan datastore.Property) error {
 	p.Cycles, p.CyclesUpdated = timedResource(p.Scycles, 15, 50, 5e4)
 	p.Memory, p.MemUpdated = timedResource(p.Smem, 15, 1, 300)
 	p.ActiveMemory, p.ActiveMemUpdated = timedResource(p.SactiveMem, 60, 2, ACTIVEMEMMAX)
-	if p.ClanMember != nil {
-		p.EncodedMember = p.ClanMember.Encode()
-	}
 	if len(p.Avatar) > 0 {
 		p.AvatarThumb = fmt.Sprintf("%s=s%d", p.Avatar, THUMBSIZE)
 	}
 	if len(p.ClanTag) > 0 {
 		p.Nick = fmt.Sprintf("<%s> %s", p.ClanTag, p.Nick)
 	}
+	p.Member = MemberName[p.MemberType]
 	p.AccessName = PlayerTypeName[p.Access]
 	p.StatusName = PlayerStatusName[p.Status]
 	return nil
@@ -232,7 +257,9 @@ func Status(c appengine.Context, playerStr string, player *Player) error {
 	}
 	player.Key = playerKey
 	player.Programs = make(map[int64]*PlayerProgramGroup)
-	player.Cleanup = make([]*datastore.Key, 0)
+	player.BandwidthUsage = 0
+	player.Bandwidth = 0
+	var cnt int
 	q := datastore.NewQuery("PlayerProgram").Ancestor(playerKey)
 	for t := q.Run(c); ; {
 		var pp PlayerProgram
@@ -258,12 +285,11 @@ func Status(c appengine.Context, playerStr string, player *Player) error {
 			group.Type = program.ProgramName[pp.Type]
 			group.Programs = make([]*PlayerProgram, 0)
 			player.Programs[pp.Type] = group
+			cnt++
 		}
 		if pp.Active && program.CONN&pp.Type == 0 {
 			group.Usage += pp.Usage
 			player.BandwidthUsage += pp.Usage
-		} else if pp.Type == program.INF {
-			player.Cleanup = append(player.Cleanup, pp.Key)
 		}
 		if pp.Yield > 0 {
 			yGroup, mapOk = player.Programs[pp.EffectorTypes] // programs with yield have only one effectortype for now
@@ -273,28 +299,21 @@ func Status(c appengine.Context, playerStr string, player *Player) error {
 				yGroup.Programs = make([]*PlayerProgram, 0)
 				yGroup.Usage = 0.0
 				player.Programs[pp.EffectorTypes] = yGroup
+				cnt++
 			}
 			yGroup.Power = true
 			if pp.Active {
 				player.Bandwidth += pp.Yield
 				yGroup.Yield += pp.Yield
-			} else if pp.Type == program.INF {
-				for _, ckey := range player.Cleanup {
-					if ckey.Equal(pp.Key) {
-						player.Cleanup = append(player.Cleanup, pp.Key)
-						break
-					}
-				}
 			}
 		}
 		group.Power = true
 		group.Programs = append(group.Programs, &pp)
 	}
-	i := len(playerPrograms)
-	player.PlayerPrograms = make([]*PlayerProgramGroup, i)
-	for cType, cGroup := range player.PlayerPrograms {
-		i--
-		player.PlayerPrograms[i] = cGroup
+	player.PlayerPrograms = make([]*PlayerProgramGroup, cnt)
+	for cType, cGroup := range player.Programs {
+		cnt--
+		player.PlayerPrograms[cnt] = cGroup
 		ignoreTypes := program.CONN | program.INF
 		if cType == ignoreTypes&cType {
 			continue
@@ -336,7 +355,9 @@ func ValidPlayer(c appengine.Context, email, nick string) (map[string]int, error
 	errmap := make(map[string]int)
 	errmap["nick"] = 1
 	errmap["email"] = 1
-	models := []interface{}{new(Email), new(Nick)}
+	uniqueEmail := &Unique{time.Now()}
+	uniqueNick := &Unique{time.Now()}
+	models := []interface{}{uniqueEmail, uniqueNick}
 	err := datastore.RunInTransaction(c, func(c appengine.Context) error {
 		if err := datastore.GetMulti(c, checkKeys, models); err != nil {
 			if multi, ok := err.(appengine.MultiError); ok {
@@ -394,19 +415,23 @@ func Create(c appengine.Context, nick, email string) (string, map[string]int, er
 		return "", nil, err
 	}
 	playerKey := datastore.NewKey(c, "Player", keyName, 0, nil)
+	trackerKey := datastore.NewKey(c, "Tracker", keyName, 0, nil)
+	tracker := new(event.Tracker)
 	player := NewPlayer()
 	player.Nick = nick
 	player.Access = ADMIN
 	player.Email = email
 	player.PlayerID = cnt
 	player.Status = LIVE
-	if key, err := datastore.Put(c, playerKey, player); err != nil {
-		if err := deleteUniquePlayer(c, email, nick); err != nil {
-			c.Errorf("error deleting unique property %s", err)
+	storeKeys := []*datastore.Key{playerKey, trackerKey}
+	models := []interface{}{player, tracker}
+	if _, err = datastore.PutMulti(c, storeKeys, models); err != nil {
+		if uerr := deleteUniquePlayer(c, email, nick); uerr != nil {
+			c.Errorf("error deleting unique property %s", uerr)
 		}
-		return nil, nil, err
+		return "", nil, err
 	}
-	return key.Encode(), nil, nil
+	return playerKey.Encode(), nil, nil
 }
 
 /*func Events(c appengine.Context, playerStr, loc, cursorStr string) (*EventList, error) {

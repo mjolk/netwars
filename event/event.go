@@ -1,0 +1,330 @@
+package event
+
+import (
+	"appengine"
+	"appengine/datastore"
+	"appengine/delay"
+	"appengine/taskqueue"
+	"bytes"
+	"encoding/gob"
+	"fmt"
+	"mj0lk.be/netwars/cache"
+	"mj0lk.be/netwars/counter"
+	"time"
+)
+
+const (
+	EMAILNOTIF       = "Email"
+	PUSHNOTIF        = "Push"
+	IN         int64 = 0
+	OUT        int64 = 1
+	JSON             = "JSON"
+	HTML             = "HTML"
+)
+
+var (
+	DirectionName = map[int64]string{
+		0: "IN",
+		1: "OUT",
+	}
+
+	Direction = map[string]int64{
+		"IN":  0,
+		"OUT": 1,
+	}
+)
+
+//CLAN parent: clan  key: playerkey
+//PLAYER same keyname
+type Tracker struct {
+	EventCount   int64 `json:"local_events"`
+	MessageCount int64 `json:"messages"`
+}
+
+type EventProgram struct {
+	Name          string         `json:"name"`
+	Amount        int64          `json: "amount"`
+	Owned         bool           `json:"owned"`
+	TypeName      string         `json:"type_name"`
+	AmountUsed    int64          `json:"amount_used" datastore:",noindex`
+	AmountBefore  int64          `json:"amount_before" datastore:",noindex`
+	AmountLost    []int64        `json:"amount_after" datastore:",noindex`
+	Lost          int64          `json:"amount_lost" datastore:",noindex"`
+	Program       *datastore.Key `json:"program" datastore:",noindex`
+	ProgramActive bool           `json:"program_active" datastore:",noindex`
+	BwLost        float64        `json:"bw_lost" datastore:",noindex`
+	//	PlayerProgram    *PlayerProgram `datastore:"-" json:"-"`
+	ActiveDefender   bool    `json:"-" datastore:",noindex`
+	AttackEfficiency float64 `json:"-" datastore:"-" datastore:",noindex`
+	YieldLost        int64   `json:"yield_lost" datastore:",noindex`
+	Power            bool    `datastore:",noindex" json:"power"`
+	VDamageReceived  int64   `datastore:",noindex" json:"-"`
+}
+
+// convention:
+// event.Player is the one who owns the event
+// need different events because of no OR queries.(need multiple queries to get all events for one player when using single event entities for both parties)
+// direction IN indicates the initiator of the event is TargetName, TargetID
+// direction OUT indicates the initiator of the event is Player, PlayerName, PlayerID
+type Event struct {
+	ClanConnection    *datastore.Key
+	Target            *datastore.Key `json:"-" datastore:",noindex` //can be clan or player
+	TargetName        string         `json:"target_name"`
+	TargetID          int64          `json:"target_id"`
+	ID                int64          `json:"event_id"` //sequence simultaniously event counter, 1 event has 2 entities (owners) but one id (count)
+	Created           time.Time      `json:"created"`
+	Player            *datastore.Key `json:"-"`           //OWNER
+	PlayerName        string         `json:"player_name"` //owner nick
+	PlayerID          int64          `json:"player_id"`   // owner id
+	EventType         string         `json:"event_type"`
+	Result            bool           `json:"result"`    //result of the event vis a vis owner (success of failure either defending or attacking)
+	Direction         int64          `json:"direction"` //incoming or outgoing event
+	Clan              *datastore.Key `json:"clan_key"`  //owning clan
+	ClanName          string         `json:"clan_name"`
+	ClanID            int64          `json:"clan_id"`
+	Expires           time.Time      `json:"expires"`
+	NewBandwidthUsage float64        `json:"new_bandwidth_usage"`
+	Memory            int64          `json:"mem_cost" datastore:",noindex"`
+	Action            string         `json:"action"`
+	BwLost            float64        `json:"bw_lost"`
+	ProgramsLost      int64          `json:"programs_lost"`
+	BwKilled          float64        `json:"bw_killed"`
+	YieldLost         int64          `json:"yield_lost"`
+	ProgramsKilled    int64          `json:"programs_killed"`
+	ApsGained         int64          `json:"aps_gained" datastore:",noindex`
+	CpsGained         int64          `json:"cps_gained" datastore:",noindex`
+	CyclesGained      int64          `json:"cycles_gained"`
+	Cycles            int64          `json:"cycles_lost"`
+	EventPrograms     []EventProgram `json:"active_programs" datastore:"-"`
+	Eprogs            []byte         `json:"-" datastore:",noindex"`
+	VDamageReceived   int64          `datastore:",noindex" json:"-"`
+}
+
+type PlayerNotification struct {
+	Player           *datastore.Key
+	Created          time.Time
+	Thread           string `json:"thread"`
+	EventType        string `json:"event_type"`
+	NotificationType string `json:"notification_type"`
+	DeviceToken      string
+	Email            string
+}
+
+type Notification struct {
+	Email   string
+	Subject string
+	Content string
+}
+
+func (e *Event) Load(c <-chan datastore.Property) error {
+	if err := datastore.LoadStruct(e, c); err != nil {
+		return err
+	}
+	if len(e.Eprogs) > 0 {
+		var epBytes = bytes.NewBuffer(e.Eprogs)
+		if err := gob.NewDecoder(epBytes).Decode(&e.EventPrograms); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Event) Save(c chan<- datastore.Property) error {
+	if len(e.EventPrograms) > 0 {
+		var epBytes bytes.Buffer
+		if err := gob.NewEncoder(&epBytes).Encode(&e.EventPrograms); err != nil {
+			return err
+		}
+		e.Eprogs = epBytes.Bytes()
+	}
+	return datastore.SaveStruct(e, c)
+}
+
+//func NewGobTask
+
+type EventFunc func(c appengine.Context, events []Event) error
+
+func (event *Event) Email() {
+	//load template for eventtype
+	/*	msg := &mail.Message{
+			Sender:  "Example.com Support <n3twars@jainware.be>",
+			To:      []string{email},
+			Subject: "Confirm your registration",
+			Body:    fmt.Sprintf(confirmMessage, url),
+		}
+		if err := mail.Send(c, msg); err != nil {
+			c.Errorf("Couldn't send email: %v", err)
+		}*/
+	//	fmt.Printf("sending email to %s \n", event.Email)
+}
+
+func (event *Event) Push() {
+	//	fmt.Printf("Pushing message to %s \n", event.Email)
+}
+
+func Send(c appeqngine.Context, em []Event, f EventFunc) error {
+	laterFunc := delay.Func("event", f)
+	laterFunc.Call(c, em)
+	//t, err := laterFunc.Task(em)
+	//if err != nil {
+	//	c.Errorf("Failed to create task: %s", err)
+	//}
+	//hostName, _ := appengine.ModuleHostname(context, "[event]", "", "")
+	//t.Header = make(map[string][]string)
+	//t.Header.Set("Host", "localhost:8081")
+	//if _, err := taskqueue.Add(c, t, ""); err != nil {
+	//	return err
+	//}
+	return nil
+}
+
+type EventList struct {
+	Events []*Event `json:"events"`
+	Cursor string   `json:"c"`
+}
+
+const (
+	GLOBAL = "Clan"
+	LOCAL  = "Player"
+)
+
+func NewEventID(c appengine.Context, cntCh chan<- int64) {
+	cnt, err := counter.IncrementAndCount(c, "Event")
+	if err != nil {
+		c.Errorf("error event counter %s \n", err)
+		cntCh <- 0
+	}
+	cntCh <- cnt
+}
+
+func NotificationsForType(c appengine.Context, player *datastore.Key, eventType string) ([]*PlayerNotification, error) {
+	k := fmt.Sprintf("%s_Notifications", player.StringID())
+	notif := make([]*PlayerNotification, 10)
+	cnt := 0
+	if !cache.Get(c, k, notif) {
+		q := datastore.NewQuery("PlayerNotification").Filter("Player =", player)
+		for t := q.Run(c); ; {
+			var pn PlayerNotification
+			_, err := t.Next(&pn)
+			if err == datastore.Done {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			notif[cnt] = &pn
+			cnt++
+		}
+		if cnt > 0 {
+			cache.Add(c, k, notif)
+		}
+		notif = notif[:cnt]
+	}
+	notifsForType := make([]*PlayerNotification, 0)
+	if cnt > 0 {
+		for _, notification := range notif {
+			if notification.EventType == eventType {
+				notifsForType = append(notifsForType, notification)
+			}
+		}
+	}
+	return notifsForType, nil
+}
+
+func (e Event) NotifyPlayer(c appengine.Context, readyCh chan<- int, player *datastore.Key) {
+	localTrackerCh := make(chan int, 1)
+	clanNotify := false
+	if player != nil {
+		clanNotify = true
+	}
+	playerKey := e.Player
+	if clanNotify {
+		playerKey = player
+	} else {
+		go func(ev Event) {
+			trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
+			tracker := new(Tracker)
+			if err := datastore.Get(c, trackerKey, tracker); err != nil {
+				c.Errorf("fatal error : %s ", err)
+			}
+			tracker.EventCount++
+			if _, err := datastore.Put(c, trackerKey, tracker); err != nil {
+				c.Errorf("fatal error: %s", err)
+			}
+			localTrackerCh <- 1
+		}(e)
+	}
+	notifications, err := NotificationsForType(c, playerKey, e.EventType)
+	if err != nil {
+		c.Errorf("error getting notifications : %s", err)
+	}
+	for _, notif := range notifications {
+		t := taskqueue.NewPOSTTask("/worker", url.Values{
+			"key": {key},
+		})
+		switch notif.NotificationType {
+		case EMAILNOTIF:
+			//Email()
+		case PUSHNOTIF:
+			//	Push()
+		}
+	}
+	if !clanNotify {
+		<-localTrackerCh
+	}
+	readyCh <- 1
+}
+
+func (e Event) Notify(c appengine.Context, readyCh chan<- int) {
+	c.Debugf("notification for event: %+v \n", e)
+	if e.Clan != nil {
+		playerNotifyCh := make(chan int)
+		trackers := make([]interface{}, 20)
+		trackerKeys := make([]*datastore.Key, 20)
+		var cnt int64
+		var pcnt int64
+		q := datastore.NewQuery("Tracker").Ancestor(e.Clan)
+		for t := q.Run(c); ; {
+			var ct Tracker
+			tkey, err := t.Next(&ct)
+			if err == datastore.Done {
+				break
+			}
+			if err != nil {
+				c.Errorf("error notifying : %s", err)
+			}
+			send := false
+			if e.Player == nil {
+				send = true
+			} else if tkey.StringID() != e.Player.StringID() {
+				send = true
+			} else {
+				pcnt++
+				go e.NotifyPlayer(c, playerNotifyCh, nil)
+			}
+			if send {
+				ct.EventCount++
+				trackers[cnt] = &ct
+				trackerKeys[cnt] = tkey
+				playerKey := datastore.NewKey(c, "Player", tkey.StringID(), 0, nil)
+				cnt++
+				go e.NotifyPlayer(c, playerNotifyCh, playerKey)
+			}
+
+		}
+		chCnt := cnt + pcnt
+		if cnt > 0 {
+			trackers := trackers[:cnt-1]
+			if _, err := datastore.PutMulti(c, trackerKeys, trackers); err != nil {
+				c.Errorf("\n error saving clan notification update %s", err)
+			}
+		}
+		var ni int64
+		for ni = 0; ni < chCnt; ni++ {
+			<-playerNotifyCh
+		}
+		readyCh <- 0
+	} else {
+		e.NotifyPlayer(c, readyCh, nil)
+	}
+}
