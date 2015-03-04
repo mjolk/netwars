@@ -26,7 +26,7 @@ func setupPlayer(c appengine.Context, nick, email string) (string, error) {
 	}
 	playerKey, _ := datastore.DecodeKey(playerStr)
 	notif := event.PlayerNotification{
-		EventType:        "Clan",
+		EventType:        "Invite",
 		NotificationType: "Email",
 		Player:           playerKey,
 	}
@@ -57,6 +57,7 @@ func TestNotify(t *testing.T) {
 		Player:    playerKey,
 		Clan:      clanKey,
 		EventType: "Clan",
+		Action:    "Invite",
 	}
 	ch := make(chan int, 1)
 	ev.Notify(c, ch)
@@ -98,6 +99,7 @@ func TestNotify2(t *testing.T) {
 		Player:    playerKey,
 		Clan:      clanKey,
 		EventType: "Clan",
+		Action:    "Invite",
 	}
 	ch := make(chan int, 1)
 	ev.Notify(c, ch)

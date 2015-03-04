@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"html/template"
 	"mj0lk.be/netwars/cache"
 	"mj0lk.be/netwars/counter"
 	"time"
@@ -32,6 +33,8 @@ var (
 		"IN":  0,
 		"OUT": 1,
 	}
+
+	templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl"))
 )
 
 //CLAN parent: clan  key: playerkey
@@ -116,6 +119,42 @@ type Notification struct {
 	Content string
 }
 
+func NewPullTask(notif Notification, id, path string) (*taskqueue.Task, error) {
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(notif); err != nil {
+		return nil, err
+	}
+
+	return &taskqueue.Task{
+		Path:    path,
+		Payload: buf.Bytes(),
+		Tag:     id,
+	}, nil
+
+}
+
+func (e Event) CreateEmail(email string) (*taskqueue.Task, error) {
+	notif := Notification{}
+	buf := new(bytes.Buffer)
+	err := templates.ExecuteTemplate(buf, e.Action+"_email.tmpl", e)
+	if err != nil {
+		return nil, err
+	}
+	notif.Content = buf.String()
+	notif.Subject = "Netwars :" + e.PlayerName
+	notif.Email = email
+	task, err := NewPullTask(notif, e.PlayerName, "/notif")
+	if err != nil {
+		return nil, err
+	}
+	return task, nil
+
+}
+
+func (e Event) CreatePush() {
+
+}
+
 func (e *Event) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(e, c); err != nil {
 		return err
@@ -140,11 +179,10 @@ func (e *Event) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(e, c)
 }
 
-//func NewGobTask
-
 type EventFunc func(c appengine.Context, events []Event) error
 
 func (event *Event) Email() {
+
 	//load template for eventtype
 	/*	msg := &mail.Message{
 			Sender:  "Example.com Support <n3twars@jainware.be>",
@@ -162,7 +200,7 @@ func (event *Event) Push() {
 	//	fmt.Printf("Pushing message to %s \n", event.Email)
 }
 
-func Send(c appeqngine.Context, em []Event, f EventFunc) error {
+func Send(c appengine.Context, em []Event, f EventFunc) error {
 	laterFunc := delay.Func("event", f)
 	laterFunc.Call(c, em)
 	//t, err := laterFunc.Task(em)
@@ -231,8 +269,9 @@ func NotificationsForType(c appengine.Context, player *datastore.Key, eventType 
 	return notifsForType, nil
 }
 
-func (e Event) NotifyPlayer(c appengine.Context, readyCh chan<- int, player *datastore.Key) {
-	localTrackerCh := make(chan int, 1)
+func (e Event) NotifyPlayer(c appengine.Context, notifCh chan<- *taskqueue.Task, player *datastore.Key) {
+	c.Debugf("nofity payer --------")
+	localTrackerCh := make(chan int)
 	clanNotify := false
 	if player != nil {
 		clanNotify = true
@@ -254,17 +293,20 @@ func (e Event) NotifyPlayer(c appengine.Context, readyCh chan<- int, player *dat
 			localTrackerCh <- 1
 		}(e)
 	}
-	notifications, err := NotificationsForType(c, playerKey, e.EventType)
+	notifications, err := NotificationsForType(c, playerKey, e.Action)
 	if err != nil {
 		c.Errorf("error getting notifications : %s", err)
 	}
 	for _, notif := range notifications {
-		t := taskqueue.NewPOSTTask("/worker", url.Values{
-			"key": {key},
-		})
+
 		switch notif.NotificationType {
 		case EMAILNOTIF:
-			//Email()
+			task, err := e.CreateEmail(notif.Email)
+			if err != nil {
+				c.Errorf("error creating task: %s", err)
+			}
+			c.Debugf("send task: %+v \n", task)
+			notifCh <- task
 		case PUSHNOTIF:
 			//	Push()
 		}
@@ -272,13 +314,15 @@ func (e Event) NotifyPlayer(c appengine.Context, readyCh chan<- int, player *dat
 	if !clanNotify {
 		<-localTrackerCh
 	}
-	readyCh <- 1
+	notifCh <- &taskqueue.Task{}
 }
 
 func (e Event) Notify(c appengine.Context, readyCh chan<- int) {
 	c.Debugf("notification for event: %+v \n", e)
+	playerNotifyCh := make(chan *taskqueue.Task)
+	var chCnt int64
 	if e.Clan != nil {
-		playerNotifyCh := make(chan int)
+
 		trackers := make([]interface{}, 20)
 		trackerKeys := make([]*datastore.Key, 20)
 		var cnt int64
@@ -312,19 +356,35 @@ func (e Event) Notify(c appengine.Context, readyCh chan<- int) {
 			}
 
 		}
-		chCnt := cnt + pcnt
+		chCnt = cnt + pcnt
+		c.Debugf("tracker count : %d\n pcnt: %d \n cnt: %d", chCnt, pcnt, cnt)
 		if cnt > 0 {
 			trackers := trackers[:cnt-1]
 			if _, err := datastore.PutMulti(c, trackerKeys, trackers); err != nil {
 				c.Errorf("\n error saving clan notification update %s", err)
 			}
 		}
-		var ni int64
-		for ni = 0; ni < chCnt; ni++ {
-			<-playerNotifyCh
-		}
-		readyCh <- 0
+
 	} else {
-		e.NotifyPlayer(c, readyCh, nil)
+		e.NotifyPlayer(c, playerNotifyCh, nil)
+		chCnt = 1
 	}
+	var ni int64
+	tasks := make([]*taskqueue.Task, chCnt, chCnt)
+	for ni = 0; ni < chCnt; {
+		task := <-playerNotifyCh
+		c.Debugf("task: %+v \n\n", task)
+		if task.Path == "" {
+			ni++
+		} else {
+			tasks[ni] = task
+			c.Debugf("task for notification: %+v \n", tasks[ni])
+		}
+
+	}
+	/*	if _, err := taskqueue.AddMulti(c, tasks, ""); err != nil {
+		c.Errorf("\n errors adding tasks : %s", err)
+	}*/
+	readyCh <- 0
+
 }
