@@ -4,268 +4,153 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"errors"
-	"fmt"
-	"math/rand"
-	"netwars/guid"
-	"netwars/program"
-	"netwars/user"
-	"netwars/utils"
-	"strconv"
+	"mj0lk.be/netwars/event"
+	"mj0lk.be/netwars/guid"
+	"mj0lk.be/netwars/player"
+	"mj0lk.be/netwars/program"
 	"time"
 )
 
 const (
-	ICEMAXCH       int64 = 90
-	ICEMINCH       int64 = 50
-	ICEKILLMINCH   int64 = 20
-	ICE_EVENT_PATH       = "/events/ice"
+	ICEMAXCH     float64 = 90.0
+	ICEMINCH     float64 = 50.0
+	ICEKILLMINCH float64 = 20.0
 )
 
-type IceResult struct {
-	Success bool
-	Killed  bool
-}
-
-type IceEventProgram struct {
-	AmountLost    int64 `json:"amount_after" datastore:",noindex`
-	AmountUsed    int64
-	BwLost        float64             `json:"bw_lost" datastore:",noindex`
-	PlayerProgram *user.PlayerProgram `datastore:"-" json:"-"`
-	Power         bool                `datastore:",noindex" json:"power"`
-}
-
-type IceEvent struct {
-	utils.Event
-	Programs       []IceEventProgram `datastore:"-" json:"-"`
-	ICEResult      IceResult
-	Target         *datastore.Key `json:"-" datastore:",noindex`
-	AttackType     int64          `json:"attack_type" datastore:",noindex"`
-	ClanMember     *datastore.Key
-	ClanConnection *datastore.Key
-	ApsGained      int64   `json:"aps_gained"`
-	CpsGained      int64   `json:"cps_gained"`
-	ActiveMem      int64   `json:"active_mem_cost"`
-	BwLost         float64 `json:"bw_lost"`
-	ProgramsLost   int64   `json:"programs_lost"`
-	YieldLost      int64   `json:"yield_lost"`
-}
-
-func buildIceProbability(actPct, killPct int64) []IceResult {
-	r := actPct / 10
-	k := killPct / 10
-	rv := make([]IceResult, 10)
-	var c int64
-	for c = 0; c < 10; c++ {
-		iceResult := IceResult{false, false}
-		if c < r {
-			iceResult.Success = true
-		}
-		if c < k {
-			iceResult.Killed = true
-		}
-		rv[c] = iceResult
-	}
-	return rv
-}
-
-func createIceResponse(c appengine.Context, iceEvent IceEvent, defender *user.Player) Response {
-	response := Response{
-		Event:      iceEvent.Event,
-		TargetName: defender.Nick,
-		TargetID:   defender.PlayerID,
-		Action:     AttackName[iceEvent.AttackType],
-	}
-	for _, aProg := range iceEvent.Programs {
-		eventProgram := EventProgram{
-			Name:  aProg.PlayerProgram.Name,
-			Owned: true,
-		}
-		response.EventPrograms = append(response.EventPrograms, eventProgram)
-
-	}
-	return response
-}
-
-func Ice(c appengine.Context, cfg AttackCfg) (Response, error) {
+func Ice(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
 	c.Infof("running spy attack <<<\n")
-	akey, err := datastore.DecodeKey(cfg.Pkey)
-	defenderID, err := strconv.ParseInt(cfg.Target, 10, 64)
-	if err != nil {
-		return Response{}, err
+	ln := len(cfg.ActivePrograms)
+	if ln < 1 || ln > 1 {
+		return AttackEvent{}, errors.New("Invalid input")
 	}
-	defenderKey, err := user.KeyByID(c, defenderID)
+	attackerKey, defenderKey, err := cfg.Keys(c)
 	if err != nil {
-		return Response{}, err
+		return AttackEvent{}, err
 	}
-	var response Response
+	var response AttackEvent
 	options := new(datastore.TransactionOptions)
 	options.XG = true
 	txErr := datastore.RunInTransaction(c, func(c appengine.Context) error {
-		now := time.Now()
-		attackerState := new(user.PlayerState)
-		defenderState := new(user.PlayerState)
+		attacker := new(player.Player)
+		defender := new(player.Player)
 		playerStCh := make(chan int)
 		go func() {
-			if _, err := user.Status(c, defenderKey.Encode(), defenderState); err != nil {
+			if err := player.Status(c, defenderKey.Encode(), defender); err != nil {
 				c.Errorf("get player status error %s \n", err)
 			}
 			playerStCh <- 0
 		}()
-		if _, err := user.Status(c, cfg.Pkey, attackerState); err != nil {
+		if err := player.Status(c, cfg.Pkey, attacker); err != nil {
 			return err
 		}
 		<-playerStCh
-		dIceEvent := IceEvent{
-			Event: utils.Event{
-				Created:   now,
-				EventType: "Attack",
-				Direction: utils.IN,
-				Player:    defenderKey,
-			},
-			Target:     akey,
-			AttackType: AttackType[cfg.AttackType],
-		}
-		aIceEvent := IceEvent{
-			Event: utils.Event{
-				Created:   now,
-				EventType: "Attack",
-				Direction: utils.OUT,
-				Player:    akey,
-			},
-			Target:     defenderKey,
-			AttackType: AttackType[cfg.AttackType],
-		}
-
+		attackEvent := NewAttackEvent(cfg.AttackType, event.OUT, attacker, defender)
+		defenseEvent := NewAttackEvent(cfg.AttackType, event.IN, defender, attacker)
 		//TODO check attacker status
-		if attackerState.Player.ClanMember != nil {
-			aIceEvent.ClanMember = attackerState.Player.ClanMember
-		}
-		if defenderState.Player.ClanMember != nil {
-			dIceEvent.ClanMember = defenderState.Player.ClanMember
-		}
 		warCh := make(chan int, 1)
-		connKeys := make([]*datastore.Key, 2)
-		if attackerState.Player.ClanMember != nil && defenderState.Player.ClanMember != nil {
-			loadWar(c, attackerState.Player.ClanMember, defenderState.Player.ClanMember, connKeys, warCh)
+		if attacker.ClanKey != nil && defender.ClanKey != nil {
+			if attacker.ClanKey.Equal(defender.ClanKey) {
+				return errors.New("Can't attack your own team members")
+			}
+			go loadWar(c, warCh, attackEvent, defenseEvent)
 		} else {
 			warCh <- 0
 		}
-		var aeIceProgram IceEventProgram
-		var pctDefense int64
-		var attackProgram *user.PlayerProgram
-		for _, eProgram := range cfg.ActivePrograms {
-			attackProgramKey, err := datastore.DecodeKey(eProgram.Key)
-			if err != nil {
-				return err
-			}
-			if aGroupForType, ok := attackerState.Programs[program.ICE]; ok {
-				for _, aProg := range aGroupForType.Programs {
-					if aProg.ProgramKey.Equal(attackProgramKey) {
-						attackProgram = aProg
-						aeIceProgram = IceEventProgram{
-							PlayerProgram: attackProgram,
-							Power:         aGroupForType.Power,
-						}
-						if fws, ok := defenderState.Programs[program.FW]; ok {
-							if fws.Power {
-								for _, fw := range fws.Programs {
-									if fw.Active {
-										if aProg.Type&fw.EffectorTypes != 0 {
-											pctDefense = int64(fw.Usage / attackerState.Player.BandwidthUsage * 100)
-										}
-									}
-								}
-							}
-
-						}
-					}
-				}
-			} else {
-				return errors.New("Fatal error: no Ice type programs ")
+		attackProgram := &AttackEventProgram{nil, new(event.EventProgram)}
+		activeProg := cfg.ActivePrograms[0]
+		attackProgramKey, err := datastore.DecodeKey(activeProg.Key)
+		if err != nil {
+			return err
+		}
+		aGroupForType := attacker.Programs[program.ICE]
+		for _, aProg := range aGroupForType.Programs {
+			if aProg.ProgramKey.Equal(attackProgramKey) {
+				attackProgram.Name = aProg.Name
+				attackProgram.AmountBefore = aProg.Amount
+				attackProgram.AmountUsed = activeProg.Amount
+				attackProgram.ProgramActive = aProg.Active
+				attackProgram.PlayerProgram = aProg
+				attackProgram.ActiveDefender = true
+				attackProgram.Power = aGroupForType.Power
+				attackProgram.Owned = true
 			}
 		}
-		actualPct := ICEMAXCH - pctDefense
-		actualKpct := ICEKILLMINCH + pctDefense
-		if actualPct < ICEMINCH {
-			actualPct = ICEMINCH
+		result, err := renderProb(attackProgram, defender)
+		if err != nil {
+			return err
 		}
-		if actualKpct > 100 {
-			actualKpct = 100
-		}
-		fmt.Printf("success pct : %d kill pct : %d \n", actualPct, actualKpct)
-		probs := buildIceProbability(actualPct, actualKpct)
-		//fmt.Printf("probabilities : %+v \n", probs)
-		rand.Seed(time.Now().UnixNano())
-		rd := rand.Int63n(10)
-		fmt.Printf("result according to pct %d \n", rd)
-		result := probs[rd]
-		fmt.Printf("result : %+v \n", result)
-		aIceEvent.ICEResult = result
-		dIceEvent.ICEResult = result
-		aIceEvent.Result = result.Success
-		dIceEvent.Result = !result.Success
-		var infectPprog *user.PlayerProgram
-		var infectPprogKey *datastore.Key
+		c.Debugf("result : %+v \n", result)
+		attackEvent.Result = result.Success
+		defenseEvent.Result = !result.Success
+		var defInfectKey *datastore.Key
+		defInfectProg := new(player.PlayerProgram)
+		var attInfectKey *datastore.Key
+		attInfectProg := new(player.PlayerProgram)
+		attacker.Memory -= 4
+		attacker.ActiveMemory -= 4
+		war := <-warCh
+		attackEvent.Memory = 4
+		keys := []*datastore.Key{attackerKey, defenderKey}
+		models := []interface{}{attacker, defender}
 		if result.Success {
-			infectProg, err := program.KeyGet(c, attackProgram.Infect)
+			infectProg, err := program.KeyGet(c, attackProgram.PlayerProgram.Infect)
 			if err != nil {
 				return err
 			}
-			keyName, err := guid.GenUUID()
+			defKeyName, err := guid.GenUUID()
+			attKeyName, err := guid.GenUUID()
 			if err != nil {
 				return err
 			}
-			infectPprogKey = datastore.NewKey(c, "PlayerProgram", keyName, 0, defenderKey)
-			infectPprog = &user.PlayerProgram{
-				Key:        infectPprogKey,
-				Amount:     1,
-				ProgramKey: attackProgram.Infect,
-				Expires:    time.Now().Add(time.Duration(infectProg.Ettl) * time.Second),
+			exp := time.Now().Add(time.Duration(infectProg.Ettl) * time.Second)
+			defInfectKey = datastore.NewKey(c, "PlayerProgram", defKeyName, 0, defenderKey)
+			defInfectProg = &player.PlayerProgram{
+				Program:    *infectProg,
+				Source:     attacker.Name,
+				Key:        defInfectKey,
+				Amount:     infectProg.InfectAmount,
+				ProgramKey: attackProgram.PlayerProgram.Infect,
+				Expires:    exp,
 				Active:     true,
 			}
-		}
-		attackerState.Player.Memory -= 4
-		attackerState.Player.ActiveMemory -= 4
-		defenderState.Player.NewLocals++
-		war := <-warCh
-		aIceEvent.ClanConnection = connKeys[0]
-		aIceEvent.ActiveMem = 4
-		dIceEvent.ClanConnection = connKeys[1]
-		keys := []*datastore.Key{akey, defenderKey}
-		models := []interface{}{attackerState.Player, defenderState.Player}
-		if result.Success {
-			keys = append(keys, infectPprogKey)
-			models = append(models, infectPprog)
+			attInfectKey = datastore.NewKey(c, "PlayerProgram", attKeyName, 0, attackerKey)
+			attInfectProg = &player.PlayerProgram{
+				Program:    *infectProg,
+				Key:        attInfectKey,
+				Amount:     infectProg.InfectAmount,
+				ProgramKey: attackProgram.PlayerProgram.Infect,
+				Expires:    exp,
+				Active:     true,
+			}
+			keys = append(keys, attInfectKey, defInfectKey)
+			models = append(models, attInfectProg, defInfectProg)
 			if war > 0 {
-				aIceEvent.CpsGained = int64(10 / war)
-				dIceEvent.ApsGained = int64(2 / war)
+				attackEvent.CpsGained = int64(5 * war)
+				defenseEvent.ApsGained = int64(1 * war)
 			}
 		}
 		if result.Killed {
-			attackProgram.Amount--
 			if attackProgram.Amount < 0 {
 				return errors.New("program amount < 0 , panic \n")
 			}
-			aeIceProgram.AmountLost = 1
-			aeIceProgram.BwLost = attackProgram.BandwidthUsage
-			aIceEvent.ProgramsLost = 1
-			aIceEvent.BwLost = attackProgram.BandwidthUsage
-			aIceEvent.YieldLost = attackProgram.Bandwidth
-			aIceEvent.Programs = append(aIceEvent.Programs, aeIceProgram)
-			keys = append(keys, attackProgram.Key)
-			models = append(models, attackProgram)
+			attackProgram.BwLost = attackProgram.PlayerProgram.BandwidthUsage * float64(attackProgram.Amount)
+			attackEvent.ProgramsLost = attackProgram.Amount
+			attackEvent.BwLost = attackProgram.BwLost
+			attackEvent.EventPrograms = append(attackEvent.EventPrograms, *attackProgram.EventProgram)
+			keys = append(keys, attackProgram.PlayerProgram.Key)
+			models = append(models, attackProgram.PlayerProgram)
 		}
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		if err := utils.SendEvent(c, []IceEvent{aIceEvent, dIceEvent}, ICE_EVENT_PATH); err != nil {
+		if err := event.Send(c, []*event.Event{attackEvent.Event, defenseEvent.Event}, event.Func); err != nil {
 			return err
 		}
-		response = createIceResponse(c, aIceEvent, defenderState.Player)
+		response = *attackEvent
 		return nil
 	}, options)
 	if txErr != nil {
-		return Response{}, err
+		return AttackEvent{}, err
 	}
 	return response, nil
 }

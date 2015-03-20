@@ -85,7 +85,7 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
 			Direction:         event.OUT,
@@ -98,7 +98,7 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 			Cycles:            cycles,
 			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		if err := event.Send(c, []event.Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, AllocateEvent); err != nil {
 			return err
 		}
 		return nil
@@ -149,7 +149,7 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
 			Direction:         event.OUT,
@@ -162,14 +162,14 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 			Cycles:            cycles,
 			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		if err := event.Send(c, []event.Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, AllocateEvent); err != nil {
 			return err
 		}
 		return nil
 	}, nil)
 }
 
-func AllocateEvent(c appengine.Context, events []event.Event) error {
+func AllocateEvent(c appengine.Context, events []*event.Event) error {
 	e := events[0]
 	cntCh := make(chan int64)
 	go event.NewEventID(c, cntCh)

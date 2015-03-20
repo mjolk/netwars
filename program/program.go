@@ -71,7 +71,7 @@ func (s *ProgramMap) Set(key string, value *Program) {
 type Program struct {
 	EncodedKey     string         `datastore:"-" json:"program_key"`
 	Key            *datastore.Key `datastore:"-" json:"-"`
-	Name           string         `datastore:"-" json:"name"`
+	Name           string         `json:"name"`
 	Attack         int64          `json:"attack"`
 	Life           int64          `json:"life"`
 	Bandwidth      int64          `json:"bandwidth"`
@@ -88,6 +88,7 @@ type Program struct {
 	Ettl           int64          `json:"ettl"`
 	Infect         *datastore.Key `json:"infect"`
 	InfectName     string         `json:"infect_name" datastore:"-"`
+	InfectAmount   int64          `json:"infect_amount"`
 }
 
 func (p *Program) Load(c <-chan datastore.Property) error {

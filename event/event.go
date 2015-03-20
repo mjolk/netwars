@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"mj0lk.be/netwars/cache"
 	"mj0lk.be/netwars/counter"
+	"mj0lk.be/netwars/guid"
 	"time"
 )
 
@@ -45,23 +46,23 @@ type Tracker struct {
 }
 
 type EventProgram struct {
-	Name          string         `json:"name"`
-	Amount        int64          `json: "amount"`
-	Owned         bool           `json:"owned"`
-	TypeName      string         `json:"type_name"`
-	AmountUsed    int64          `json:"amount_used" datastore:",noindex`
-	AmountBefore  int64          `json:"amount_before" datastore:",noindex`
-	AmountLost    []int64        `json:"amount_after" datastore:",noindex`
-	Lost          int64          `json:"amount_lost" datastore:",noindex"`
-	Program       *datastore.Key `json:"program" datastore:",noindex`
-	ProgramActive bool           `json:"program_active" datastore:",noindex`
-	BwLost        float64        `json:"bw_lost" datastore:",noindex`
-	//	PlayerProgram    *PlayerProgram `datastore:"-" json:"-"`
-	ActiveDefender   bool    `json:"-" datastore:",noindex`
-	AttackEfficiency float64 `json:"-" datastore:"-" datastore:",noindex`
-	YieldLost        int64   `json:"yield_lost" datastore:",noindex`
-	Power            bool    `datastore:",noindex" json:"power"`
-	VDamageReceived  int64   `datastore:",noindex" json:"-"`
+	Name             string         `json:"name"`
+	Source           string         `json:"source"`
+	Amount           int64          `json: "amount"`
+	Owned            bool           `json:"owned"`
+	TypeName         string         `json:"type_name"`
+	AmountUsed       int64          `json:"amount_used" datastore:",noindex`
+	AmountBefore     int64          `json:"amount_before" datastore:",noindex`
+	AmountLost       []int64        `json:"amount_after" datastore:",noindex`
+	Lost             int64          `json:"amount_lost" datastore:",noindex"`
+	Program          *datastore.Key `json:"program" datastore:",noindex`
+	ProgramActive    bool           `json:"program_active" datastore:",noindex`
+	BwLost           float64        `json:"bw_lost" datastore:",noindex`
+	ActiveDefender   bool           `json:"-" datastore:",noindex`
+	AttackEfficiency float64        `json:"-" datastore:"-" datastore:",noindex`
+	YieldLost        int64          `json:"yield_lost" datastore:",noindex`
+	Power            bool           `datastore:",noindex" json:"power"`
+	VDamageReceived  int64          `datastore:",noindex" json:"-"`
 }
 
 // convention:
@@ -70,7 +71,6 @@ type EventProgram struct {
 // direction IN indicates the initiator of the event is TargetName, TargetID
 // direction OUT indicates the initiator of the event is Player, PlayerName, PlayerID
 type Event struct {
-	ClanConnection    *datastore.Key
 	Target            *datastore.Key `json:"-" datastore:",noindex` //can be clan or player
 	TargetName        string         `json:"target_name"`
 	TargetID          int64          `json:"target_id"`
@@ -101,6 +101,7 @@ type Event struct {
 	EventPrograms     []EventProgram `json:"active_programs" datastore:"-"`
 	Eprogs            []byte         `json:"-" datastore:",noindex"`
 	VDamageReceived   int64          `datastore:",noindex" json:"-"`
+	GUID              string         `datastore:"-"`
 }
 
 type PlayerNotification struct {
@@ -179,7 +180,7 @@ func (e *Event) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(e, c)
 }
 
-type EventFunc func(c appengine.Context, events []Event) error
+type EventFunc func(c appengine.Context, events []*Event) error
 
 func (event *Event) Email() {
 
@@ -200,8 +201,52 @@ func (event *Event) Push() {
 	//	fmt.Printf("Pushing message to %s \n", event.Email)
 }
 
-func Send(c appengine.Context, em []Event, f EventFunc) error {
-	laterFunc := delay.Func("event", f)
+func Func(c appengine.Context, events []*Event) error {
+
+	evCnt := len(events)
+	if evCnt > 0 {
+		cntCh := make(chan int64, 1)
+		NewEventID(c, cntCh)
+		keys := make([]*datastore.Key, evCnt)
+		models := make([]interface{}, evCnt)
+		id := <-cntCh
+		for i := range events {
+			events[i].ID = id
+			keys[i] = datastore.NewKey(c, "Event", events[i].GUID, 0, nil)
+			models[i] = events[i]
+		}
+		if len(keys) == 1 {
+			if _, err := datastore.Put(c, keys[0], models[0]); err != nil {
+				return err
+			}
+		} else {
+			if _, err := datastore.PutMulti(c, keys, models); err != nil {
+				return err
+			}
+		}
+		notifyCh := make(chan int, evCnt)
+		for _, ev := range events {
+			go ev.Notify(c, notifyCh)
+		}
+		for n := 0; n < evCnt; n++ {
+			<-notifyCh
+		}
+	}
+	return nil
+
+}
+
+func Send(c appengine.Context, em []*Event, e EventFunc) error {
+	if len(em) > 0 {
+		for i := range em {
+			gid, err := guid.GenUUID()
+			if err != nil {
+				return err
+			}
+			em[i].GUID = gid
+		}
+	}
+	laterFunc := delay.Func("event", e)
 	laterFunc.Call(c, em)
 	//t, err := laterFunc.Task(em)
 	//if err != nil {

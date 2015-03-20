@@ -3,14 +3,9 @@ package attack
 import (
 	"appengine"
 	"encoding/json"
+	"mj0lk.be/netwars/utils"
 	"net/http"
-	"netwars/utils"
 )
-
-func init() {
-	r := utils.Router()
-	r.HandleFunc("/attack", AttackPlayer).Methods("POST")
-}
 
 func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
@@ -19,14 +14,14 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
-		var response Response
+		var response AttackEvent
 		var err error
-		if AttackType[cfg.AttackType]&BAL != 0 {
+		switch cfg.AttackType {
+		case BAL:
 			response, err = Attack(c, cfg)
-			c.Debugf("error attack %s\n", err)
-		} else if AttackType[cfg.AttackType]&ICE != 0 {
+		case ICE:
 			response, err = Ice(c, cfg)
-		} else if AttackType[cfg.AttackType]&INT != 0 {
+		case INT:
 			response, err = Spy(c, cfg)
 		}
 		if err != nil {

@@ -217,34 +217,34 @@ func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 
 func KeyByID(c appengine.Context, id int64) (*datastore.Key, error) {
 	k := fmt.Sprintf("%d", id)
-	rk := []*datastore.Key{new(datastore.Key)}
-	if !cache.Get(c, k, rk[0]) {
-		q := datastore.NewQuery("Player").Filter("PlayerID =", id).KeysOnly()
-		result := make([]Player, 0, 1)
+	rk := new(datastore.Key)
+	if !cache.Get(c, k, rk) {
+		q := datastore.NewQuery("Player").Filter("PlayerID =", id).KeysOnly().Limit(1)
+		result := make([]Player, 1, 1)
 		keys, err := q.GetAll(c, &result)
 		if err != nil {
 			return nil, err
 		}
 		if len(keys) > 0 {
-			rk[0] = keys[0]
-			cache.Add(c, k, rk[0])
+			rk = keys[0]
+			cache.Add(c, k, rk)
 		}
 	}
-	return rk[0], nil
+	return rk, nil
 }
 
-func Get(c appengine.Context, playerStr string, player *Player) error {
+func Get(c appengine.Context, playerStr string, player *Player) (*datastore.Key, error) {
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	if !cache.Get(c, playerKey.StringID(), player) {
 		if err := datastore.Get(c, playerKey, player); err != nil {
-			return err
+			return nil, err
 		}
 		cache.Add(c, playerKey.StringID(), player)
 	}
-	return nil
+	return playerKey, nil
 }
 
 func Status(c appengine.Context, playerStr string, player *Player) error {

@@ -2,14 +2,13 @@ package attack
 
 import (
 	"appengine"
+	"appengine/aetest"
 	"appengine/datastore"
 	"errors"
-	appenginetesting "github.com/icub3d/appenginetesting"
-	"netwars/clan"
-	"netwars/program"
-	"netwars/testutils"
-	"netwars/user"
-	"strconv"
+	"mj0lk.be/netwars/clan"
+	"mj0lk.be/netwars/player"
+	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/testutils"
 	"testing"
 	"time"
 )
@@ -195,7 +194,7 @@ func setupPrograms(c appengine.Context) error {
 }
 
 func setupPlayer(c appengine.Context, nick string, email string) (string, error) {
-	playerKeyStr, usererr, err := user.Create(c, nick, email)
+	playerKeyStr, usererr, err := player.Create(c, nick, email)
 	if err != nil {
 		return "", err
 
@@ -207,37 +206,37 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 }
 
 //create attacklist with all available offensive programs
-func getAttackPrograms(c appengine.Context, player *datastore.Key) ([]ActiveProgram, error) {
-	state := new(user.PlayerState)
-	if _, err := user.Status(c, player.Encode(), state); err != nil {
+func getAttackPrograms(c appengine.Context, playerKey *datastore.Key) ([]ActiveProgram, error) {
+	state := new(player.Player)
+	if err := player.Status(c, playerKey.Encode(), state); err != nil {
 		return nil, err
 	}
 	var attackerPrograms []ActiveProgram
 	for _, atpe := range OffensiveTypes {
 		if aGroupForType, ok := state.Programs[atpe]; ok {
 			for _, prog := range aGroupForType.Programs {
-				attackerPrograms = append(attackerPrograms, ActiveProgram{prog.EncodedProgramKey, prog.Amount})
+				attackerPrograms = append(attackerPrograms, ActiveProgram{prog.ProgramKey.Encode(), prog.Amount})
 			}
 		}
 	}
 	return attackerPrograms, nil
 }
 
-func getActiveProgram(c appengine.Context, player *datastore.Key, tpe int64) ([]ActiveProgram, error) {
-	state := new(user.PlayerState)
-	if _, err := user.Status(c, player.Encode(), state); err != nil {
+func getActiveProgram(c appengine.Context, playerKey *datastore.Key, tpe int64) ([]ActiveProgram, error) {
+	state := new(player.Player)
+	if err := player.Status(c, playerKey.Encode(), state); err != nil {
 		return nil, err
 	}
 	activeProgs := make([]ActiveProgram, 1)
 	if group, ok := state.Programs[tpe]; ok {
 		// can only select one program
-		activeProgs[0] = ActiveProgram{group.Programs[0].EncodedProgramKey, 1}
+		activeProgs[0] = ActiveProgram{group.Programs[0].ProgramKey.Encode(), 1}
 	}
 	return activeProgs, nil
 }
 
 func TestSpy(t *testing.T) {
-	c, err := appenginetesting.NewContext(nil)
+	c, err := aetest.NewContext(nil)
 	if err != nil {
 		t.Fatalf("NewContext: %v", err)
 	}
@@ -267,39 +266,39 @@ func TestSpy(t *testing.T) {
 	intKey := datastore.NewKey(c, "Program", INTP, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := user.Allocate(c, attackerStr, intConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, intConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := user.Allocate(c, attackerStr, intKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, intKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate attacker spy program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkKey2.Encode(), "5"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkKey2.Encode(), "5"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	/*	if err := user.Allocate(c, defenderStr, swarmConnKey.Encode(), "1"); err != nil {
+	/*	if err := player.Allocate(c, defenderStr, swarmConnKey.Encode(), "1"); err != nil {
 			t.Fatalf("allocate defending program connection error %s \n", err)
 		}
-		if err := user.Allocate(c, defenderStr, swarmKey.Encode(), "1"); err != nil {
+		if err := player.Allocate(c, defenderStr, swarmKey.Encode(), "1"); err != nil {
 			t.Fatalf("allocate defending program error %s \n", err)
 		}*/
 	attackPrograms, err := getActiveProgram(c, attackerKey, program.INT)
 	if err != nil {
 		t.Fatalf("error loading spyprogram %s\n", err)
 	}
-	defender := new(user.Player)
+	defender := new(player.Player)
 	if err := datastore.Get(c, defenderKey, defender); err != nil {
 		t.Fatalf("errror loading defender \n", err)
 	}
 	attackCfg := AttackCfg{
-		AttackType:     AttackName[INT],
+		AttackType:     INT,
 		Pkey:           attackerKey.Encode(),
-		Target:         strconv.FormatInt(defender.PlayerID, 10),
+		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
@@ -312,7 +311,7 @@ func TestSpy(t *testing.T) {
 }
 
 func TestIce(t *testing.T) {
-	c, err := appenginetesting.NewContext(nil)
+	c, err := aetest.NewContext(nil)
 	if err != nil {
 		t.Fatalf("NewContext: %v", err)
 	}
@@ -335,46 +334,45 @@ func TestIce(t *testing.T) {
 	}
 	iceConnKey := datastore.NewKey(c, "Program", ICECONN, 0, nil)
 	iceKey := datastore.NewKey(c, "Program", ICEP, 0, nil)
-	if err := user.Allocate(c, attackerStr, iceConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, iceConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate ice connection error %s \n", err)
 	}
-	if err := user.Allocate(c, attackerStr, iceKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, iceKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate attacker spy program error %s \n", err)
 	}
 	attackPrograms, err := getActiveProgram(c, attackerKey, program.ICE)
 	if err != nil {
 		t.Fatalf("error loading spyprogram %s\n", err)
 	}
-	defender := new(user.Player)
+	defender := new(player.Player)
 	if err := datastore.Get(c, defenderKey, defender); err != nil {
 		t.Fatalf("errror loading defender \n", err)
 	}
 	attackCfg := AttackCfg{
-		AttackType:     AttackName[ICE],
+		AttackType:     ICE,
 		Pkey:           attackerKey.Encode(),
-		Target:         strconv.FormatInt(defender.PlayerID, 10),
+		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
-	defenderState := new(user.PlayerState)
-	if _, err := user.Status(c, defenderStr, defenderState); err != nil {
+	if err := player.Status(c, defenderStr, defender); err != nil {
 		t.Fatalf("error fetching state defender")
 	}
-	t.Logf("defender bandwidthusage: %f \n", defenderState.Player.BandwidthUsage)
+	t.Logf("defender bandwidthusage: %f \n", defender.BandwidthUsage)
 	testutils.PurgeQueue(c, t)
 	spyEvent, err := Ice(c, attackCfg)
 	if err != nil {
 		t.Fatalf("spy error %s \n", err)
 	}
-	t.Logf("\n <<< ICEEVENT >>> \n%+v\n", spyEvent)
+	t.Logf("\n <<< ICEEVENT >>> \n%+v\n", spyEvent.Event)
 	testutils.CheckQueue(c, t, 1)
-	if _, err := user.Status(c, defenderStr, defenderState); err != nil {
+	if err := player.Status(c, defenderStr, defender); err != nil {
 		t.Fatalf("error fetching state defender")
 	}
-	t.Logf("defender bandwidthusage: %f \n", defenderState.Player.BandwidthUsage)
+	t.Logf("defender bandwidthusage: %f \n", defender.BandwidthUsage)
 }
 
 func TestAttack(t *testing.T) {
-	c, err := appenginetesting.NewContext(nil)
+	c, err := aetest.NewContext(nil)
 	if err != nil {
 		t.Fatalf("NewContext: %v", err)
 	}
@@ -405,36 +403,36 @@ func TestAttack(t *testing.T) {
 	//d0sKey := datastore.NewKey(c, "Program", D0S, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := user.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := user.Allocate(c, attackerStr, swarmKey.Encode(), "2"); err != nil {
+	if err := player.Allocate(c, attackerStr, swarmKey.Encode(), "2"); err != nil {
 		t.Fatalf("allocate attacker offensive program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
+	if err := player.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
 	attackPrograms, err := getAttackPrograms(c, attackerKey)
 	if err != nil {
 		t.Fatalf("error loading attackprograms %s\n", err)
 	}
-	defender := new(user.Player)
+	defender := new(player.Player)
 	if err := datastore.Get(c, defenderKey, defender); err != nil {
 		t.Fatalf("errror loading defender \n", err)
 	}
 	attackCfg := AttackCfg{
-		AttackType:     AttackName[BW],
+		AttackType:     BW,
 		Pkey:           attackerKey.Encode(),
-		Target:         strconv.FormatInt(defender.PlayerID, 10),
+		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
@@ -447,7 +445,7 @@ func TestAttack(t *testing.T) {
 }
 
 func TestAttackWithClan(t *testing.T) {
-	c, err := appenginetesting.NewContext(nil)
+	c, err := aetest.NewContext(nil)
 	if err != nil {
 		t.Fatalf("NewContext: %v", err)
 	}
@@ -456,7 +454,7 @@ func TestAttackWithClan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup players error %s \n", err)
 	}
-	_, errmap, err := clan.Create(c, attackerStr, CLAN1, "lol")
+	aClanStr, errmap, err := clan.Create(c, attackerStr, CLAN1, "lol")
 	if err != nil {
 		t.Fatalf("\n create clan error %s", err)
 	}
@@ -478,6 +476,10 @@ func TestAttackWithClan(t *testing.T) {
 	if err := clan.Connect(c, attackerStr, targetClanKey.Encode()); err != nil {
 		t.Fatalf("error connecting to clan: %s", err)
 	}
+	targetClanKey0 := datastore.NewKey(c, "Clan", aClanStr, 0, nil)
+	if err := clan.Connect(c, defenderStr, targetClanKey0.Encode()); err != nil {
+		t.Fatalf("error connecting to clan: %s", err)
+	}
 	if err := setupPrograms(c); err != nil {
 		t.Fatalf("error setup programs: %s \n", err)
 	}
@@ -496,36 +498,36 @@ func TestAttackWithClan(t *testing.T) {
 	//d0sKey := datastore.NewKey(c, "Program", D0S, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := user.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := user.Allocate(c, attackerStr, swarmKey.Encode(), "4"); err != nil {
+	if err := player.Allocate(c, attackerStr, swarmKey.Encode(), "4"); err != nil {
 		t.Fatalf("allocate attacker offensive program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
+	if err := player.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := user.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
+	if err := player.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
 	attackPrograms, err := getAttackPrograms(c, attackerKey)
 	if err != nil {
 		t.Fatalf("error loading attackprograms %s\n", err)
 	}
-	defender := new(user.Player)
+	defender := new(player.Player)
 	if err := datastore.Get(c, defenderKey, defender); err != nil {
 		t.Fatalf("errror loading defender \n", err)
 	}
 	attackCfg := AttackCfg{
-		AttackType:     AttackName[BW],
+		AttackType:     BW,
 		Pkey:           attackerKey.Encode(),
-		Target:         strconv.FormatInt(defender.PlayerID, 10),
+		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)

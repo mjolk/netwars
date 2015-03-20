@@ -33,4 +33,14 @@ func init() {
 	s.HandleFunc("/promotions", clan.EditLeaderShip).Methods("POST")
 	s.HandleFunc("/demotions", clan.EditLeaderShip).Methods("POST")
 	s.HandleFunc("/removals", clan.KickPlayer).Methods("POST")
+
+	router.HandleFunc("/attack", attack.AttackPlayer).Methods("POST")
+
+	s := r.PathPrefix("/messages").Subrouter()
+	s.HandleFunc("/", CreateOrUpdateMessage).Methods("POST")
+	//s.HandleFunc("/message_delete", DeleteMessage)
+	s.HandleFunc("/boards/clan", ListClanBoards).Methods("GET").Queries("pkey", "")
+	s.HandleFunc("/boards/public", ListPublicBoards).Methods("GET").Queries("pkey", "")
+	s.HandleFunc("/threads", ListThreads).Methods("GET").Queries("pkey", "", "tkey", "")
+	s.HandleFunc("/messages", ListMessages).Methods("GET").Queries("pkey", "", "tkey", "")
 }

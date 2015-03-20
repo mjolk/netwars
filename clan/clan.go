@@ -191,7 +191,6 @@ func Status(c appengine.Context, clanStr string, team *Clan) error {
 		if err != nil {
 			return err
 		}
-		c.Debugf("count players: %d \n", cnt)
 		member.Key = key
 		team.Members[cnt] = &member
 		team.BandwidthUsage += member.BandwidthUsage
@@ -253,7 +252,7 @@ func DisConnect(c appengine.Context, playerStr, connStr string) error {
 		if _, err := datastore.Put(c, connKey, connection); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Created:    time.Now(),
 			Player:     playerKey,
 			PlayerName: iplayer.Nick,
@@ -264,7 +263,7 @@ func DisConnect(c appengine.Context, playerStr, connStr string) error {
 			Target:     connection.Target,
 			Action:     "DisConnect",
 		}
-		e1 := event.Event{
+		e1 := &event.Event{
 			Created:   time.Now(),
 			EventType: "Clan",
 			Direction: event.IN,
@@ -272,54 +271,32 @@ func DisConnect(c appengine.Context, playerStr, connStr string) error {
 			Target:    iplayer.ClanKey,
 			Action:    "DisConnect",
 		}
-		if err := event.Send(c, []event.Event{e, e1}, DisConnectEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e, e1}, func(c appengine.Context, e []*event.Event) error {
+			aEvent := e[0]
+			bEvent := e[1]
+			doneCh := make(chan int)
+			aTeam := new(Clan)
+			bTeam := new(Clan)
+			go func() {
+				if err := Get(c, aEvent.Clan, aTeam); err != nil {
+					c.Errorf("error getting clan : %s", err)
+				}
+				doneCh <- 1
+			}()
+			if err := Get(c, bEvent.Clan, bTeam); err != nil {
+				c.Errorf("error getting clan %s", err)
+			}
+			<-doneCh
+			aEvent.ClanName = bTeam.Name
+			aEvent.ClanID = bTeam.ClanID
+			bEvent.ClanName = aTeam.Name
+			bEvent.ClanID = aTeam.ClanID
+			return event.Func(c, e)
+		}); err != nil {
 			return err
 		}
 	} else {
 		return errors.New("Connection already inactive")
-	}
-	return nil
-}
-
-func DisConnectEvent(c appengine.Context, ev []event.Event) error {
-	attackEvent := ev[0]
-	defenseEvent := ev[1]
-	attackingClan := new(Clan)
-	defendingClan := new(Clan)
-	cntCh := make(chan int64, 2)
-	go event.NewEventID(c, cntCh)
-	if err := datastore.GetMulti(c, []*datastore.Key{attackEvent.Clan, defenseEvent.Clan},
-		[]interface{}{attackingClan, defendingClan}); err != nil {
-		return err
-	}
-	attackEvent.TargetName = defendingClan.Name
-	attackEvent.TargetID = defendingClan.ClanID
-	defenseEvent.TargetName = attackingClan.Name
-	defenseEvent.TargetID = attackingClan.ClanID
-	attackEvent.ClanName = attackingClan.Name
-	attackEvent.ClanID = attackingClan.ClanID
-	defenseEvent.ClanID = defendingClan.ClanID
-	defenseEvent.ClanName = defendingClan.Name
-	aGuid, err := guid.GenUUID()
-	dGuid, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	attackKey := datastore.NewKey(c, "Event", aGuid, 0, nil)
-	defenseKey := datastore.NewKey(c, "Event", dGuid, 0, nil)
-	clanNotify := make(chan int)
-	go attackEvent.Notify(c, clanNotify)
-	go defenseEvent.Notify(c, clanNotify)
-	id := <-cntCh
-	attackEvent.ID = id
-	defenseEvent.ID = id
-	keys := []*datastore.Key{attackKey, defenseKey}
-	models := []interface{}{&attackEvent, &defenseEvent}
-	if _, err := datastore.PutMulti(c, keys, models); err != nil {
-		return err
-	}
-	for i := 0; i < 2; i++ {
-		<-clanNotify
 	}
 	return nil
 }
@@ -399,7 +376,7 @@ func Connect(c appengine.Context, playerStr, target string) error {
 		return err
 	}
 	created := time.Now()
-	e := event.Event{
+	e := &event.Event{
 		Created:    created,
 		Player:     playerKey,
 		PlayerName: iplayer.Nick,
@@ -407,28 +384,28 @@ func Connect(c appengine.Context, playerStr, target string) error {
 		Direction:  event.OUT,
 		EventType:  "Clan",
 		Clan:       iplayer.ClanKey,
-		ClanName:   at.Name,
-		ClanID:     at.ClanID,
+		ClanName:   dt.Name,
+		ClanID:     dt.ClanID,
 		Target:     defendingClanKey,
 		TargetName: dt.Name,
 		TargetID:   dt.ClanID,
 		Expires:    newConnection.Expires,
 		Action:     "Connect",
 	}
-	e1 := event.Event{
+	e1 := &event.Event{
 		Created:    created,
 		EventType:  "Clan",
 		Direction:  event.IN,
 		Clan:       defendingClanKey,
-		ClanName:   dt.Name,
-		ClanID:     dt.ClanID,
+		ClanName:   at.Name,
+		ClanID:     at.ClanID,
 		Target:     iplayer.ClanKey,
 		TargetName: at.Name,
 		TargetID:   at.ClanID,
 		Expires:    newConnection.Expires,
 		Action:     "Connect",
 	}
-	if err := event.Send(c, []event.Event{e, e1}, ClanEvent); err != nil {
+	if err := event.Send(c, []*event.Event{e, e1}, event.Func); err != nil {
 		return err
 	}
 	return nil
@@ -502,7 +479,7 @@ func Join(c appengine.Context, playerStr, inviteStr string) error {
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Created:    time.Now(),
 			Player:     playerKey,
 			EventType:  "Clan",
@@ -516,7 +493,7 @@ func Join(c appengine.Context, playerStr, inviteStr string) error {
 			TargetName: team.Name,
 			TargetID:   team.ClanID,
 		}
-		if err := event.Send(c, []event.Event{e}, SingleClanEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, event.Func); err != nil {
 			return err
 		}
 		return nil
@@ -601,7 +578,7 @@ func InvitePlayer(c appengine.Context, playerStr, inviteeIDStr string) error {
 		return err
 	}
 	now := time.Now()
-	e := event.Event{
+	e := &event.Event{
 		Created:    now,
 		Player:     playerKey,
 		Direction:  event.OUT,
@@ -617,7 +594,7 @@ func InvitePlayer(c appengine.Context, playerStr, inviteeIDStr string) error {
 		ClanName:   team.Name,
 		ClanID:     team.ClanID,
 	}
-	e1 := event.Event{
+	e1 := &event.Event{
 		Created:    now,
 		Direction:  event.IN,
 		Player:     inviteeKey,
@@ -632,37 +609,8 @@ func InvitePlayer(c appengine.Context, playerStr, inviteeIDStr string) error {
 		ClanName:   team.Name,
 		ClanID:     team.ClanID,
 	}
-	if err := event.Send(c, []event.Event{e, e1}, ClanEvent); err != nil {
+	if err := event.Send(c, []*event.Event{e, e1}, event.Func); err != nil {
 		return err
-	}
-	return nil
-}
-
-func ClanEvent(c appengine.Context, em []event.Event) error {
-	initEvent := em[0]
-	subjEvent := em[1]
-	cntCh := make(chan int64, 2)
-	go event.NewEventID(c, cntCh)
-	receiverGuid, err := guid.GenUUID()
-	senderGuid, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	senderKey := datastore.NewKey(c, "Event", senderGuid, 0, nil)
-	receiverKey := datastore.NewKey(c, "Event", receiverGuid, 0, nil)
-	notifyCh := make(chan int, 2)
-	go initEvent.Notify(c, notifyCh)
-	go subjEvent.Notify(c, notifyCh)
-	id := <-cntCh
-	initEvent.ID = id
-	subjEvent.ID = id
-	keys := []*datastore.Key{senderKey, receiverKey}
-	models := []interface{}{&initEvent, &subjEvent}
-	if _, err := datastore.PutMulti(c, keys, models); err != nil {
-		return err
-	}
-	for i := 0; i < 2; i++ {
-		<-notifyCh
 	}
 	return nil
 }
@@ -797,7 +745,7 @@ func Create(c appengine.Context, playerStr, clanName, tag string) (string, map[s
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Created:    time.Now(),
 			Direction:  event.IN,
 			Player:     playerKey,
@@ -809,7 +757,7 @@ func Create(c appengine.Context, playerStr, clanName, tag string) (string, map[s
 			PlayerName: iplayer.Nick,
 			PlayerID:   iplayer.PlayerID,
 		}
-		if err := event.Send(c, []event.Event{e}, SingleClanEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, event.Func); err != nil {
 			return err
 		}
 		return nil
@@ -822,26 +770,6 @@ func Create(c appengine.Context, playerStr, clanName, tag string) (string, map[s
 		return "", nil, txErr
 	}
 	return clanGuid, nil, nil
-}
-
-func SingleClanEvent(c appengine.Context, em []event.Event) error {
-	initEvent := em[0]
-	cntCh := make(chan int64, 1)
-	go event.NewEventID(c, cntCh)
-	eventKeyString, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	eventKey := datastore.NewKey(c, "Event", eventKeyString, 0, nil)
-	//TODO change to message code
-	notifyCh := make(chan int)
-	go initEvent.Notify(c, notifyCh)
-	initEvent.ID = <-cntCh
-	if _, err := datastore.Put(c, eventKey, &initEvent); err != nil {
-		return err
-	}
-	<-notifyCh
-	return nil
 }
 
 func Leave(c appengine.Context, playerStr string) error {
@@ -880,7 +808,7 @@ func Leave(c appengine.Context, playerStr string) error {
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}
-		e := event.Event{
+		e := &event.Event{
 			Created:    time.Now(),
 			Player:     playerKey,
 			Direction:  event.OUT,
@@ -892,36 +820,21 @@ func Leave(c appengine.Context, playerStr string) error {
 			ClanName:   clan.Name,
 			ClanID:     clan.ClanID,
 		}
-		if err := event.Send(c, []event.Event{e}, LeaveEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, func(c appengine.Context, evs []*event.Event) error {
+			if err := event.Func(c, evs); err != nil {
+				return err
+			}
+			le := evs[0]
+			trackerKey := datastore.NewKey(c, "Tracker", le.Player.StringID(), 0, le.Clan)
+			if err := datastore.Delete(c, trackerKey); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 		return nil
 	}, options)
-}
-
-func LeaveEvent(c appengine.Context, em []event.Event) error {
-	initEvent := em[0]
-	cntCh := make(chan int64, 1)
-	go event.NewEventID(c, cntCh)
-	eventKeyString, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	eventKey := datastore.NewKey(c, "Event", eventKeyString, 0, nil)
-	//TODO change to message code
-	notifyCh := make(chan int, 1)
-	go initEvent.Notify(c, notifyCh)
-	initEvent.ID = <-cntCh
-	if _, err := datastore.Put(c, eventKey, &initEvent); err != nil {
-		return err
-	}
-	<-notifyCh
-	//wait for notifications to finish : otherwise leaving player doesnt get local event.
-	trackerKey := datastore.NewKey(c, "Tracker", initEvent.Player.StringID(), 0, initEvent.Clan)
-	if err := datastore.Delete(c, trackerKey); err != nil {
-		return err
-	}
-	return nil
 }
 
 func checkLeaderShip(c appengine.Context, clanKey *datastore.Key) (int64, error) {
@@ -1000,7 +913,7 @@ func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error 
 	if _, err := datastore.PutMulti(c, keys, models); err != nil {
 		return err
 	}
-	e := event.Event{
+	e := &event.Event{
 		Created:    time.Now(),
 		Player:     playerKey,
 		EventType:  "Clan",
@@ -1014,7 +927,7 @@ func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error 
 		Direction:  event.OUT,
 	}
 	//no need to provide clan -> same clan and otherwise double global event
-	e1 := event.Event{
+	e1 := &event.Event{
 		Created:    time.Now(),
 		Player:     promoteKey,
 		EventType:  "Clan",
@@ -1026,7 +939,19 @@ func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error 
 		Action:     action,
 		Direction:  event.IN,
 	}
-	if err := event.Send(c, []event.Event{e, e1}, ClanEvent); err != nil {
+	if err := event.Send(c, []*event.Event{e, e1}, func(c appengine.Context, e []*event.Event) error {
+		aEvent := e[0]
+		bEvent := e[1]
+		team := new(Clan)
+		if err := Get(c, aEvent.Clan, team); err != nil {
+			c.Errorf("error getting clan %s", err)
+		}
+		aEvent.ClanName = team.Name
+		aEvent.ClanID = team.ClanID
+		bEvent.ClanName = team.Name
+		bEvent.ClanID = team.ClanID
+		return event.Func(c, e)
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -1055,7 +980,7 @@ func UpdateMessage(c appengine.Context, update *MessageUpdate) error {
 	if _, err := datastore.Put(c, iplayer.ClanKey, team); err != nil {
 		return err
 	}
-	e := event.Event{
+	e := &event.Event{
 		Created:    time.Now(),
 		Player:     playerKey,
 		EventType:  "Clan",
@@ -1067,7 +992,7 @@ func UpdateMessage(c appengine.Context, update *MessageUpdate) error {
 		PlayerID:   iplayer.PlayerID,
 		Direction:  event.IN,
 	}
-	if err := event.Send(c, []event.Event{e}, SingleClanEvent); err != nil {
+	if err := event.Send(c, []*event.Event{e}, event.Func); err != nil {
 		return err
 	}
 	return nil
@@ -1113,7 +1038,7 @@ func Kick(c appengine.Context, playerStr, target string) error {
 		return err
 	}
 
-	e := event.Event{
+	e := &event.Event{
 		Created:    time.Now(),
 		Player:     playerKey,
 		EventType:  "Clan",
@@ -1126,7 +1051,7 @@ func Kick(c appengine.Context, playerStr, target string) error {
 		Action:     "Kick",
 		Direction:  event.OUT,
 	}
-	e1 := event.Event{
+	e1 := &event.Event{
 		Created:    time.Now(),
 		Player:     kickedPlayerKey,
 		PlayerName: kickedPlayer.Nick,
@@ -1138,41 +1063,27 @@ func Kick(c appengine.Context, playerStr, target string) error {
 		TargetID:   iplayer.PlayerID,
 		Direction:  event.IN,
 	}
-	if err := event.Send(c, []event.Event{e, e1}, KickEvent); err != nil {
-		return err
-	}
-	return nil
-}
-
-func KickEvent(c appengine.Context, em []event.Event) error {
-	initEvent := em[0]
-	subjEvent := em[1]
-	cntCh := make(chan int64, 2)
-	go event.NewEventID(c, cntCh)
-	receiverGuid, err := guid.GenUUID()
-	senderGuid, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	senderKey := datastore.NewKey(c, "Event", senderGuid, 0, nil)
-	receiverKey := datastore.NewKey(c, "Event", receiverGuid, 0, nil)
-	notifyCh := make(chan int, 2)
-	go initEvent.Notify(c, notifyCh)
-	go subjEvent.Notify(c, notifyCh)
-	id := <-cntCh
-	initEvent.ID = id
-	subjEvent.ID = id
-	keys := []*datastore.Key{senderKey, receiverKey}
-	models := []interface{}{&initEvent, &subjEvent}
-	if _, err := datastore.PutMulti(c, keys, models); err != nil {
-		return err
-	}
-	for i := 0; i < 2; i++ {
-		<-notifyCh
-	}
-	//wait for notifications to finish : otherwise kicked player doesnt get local event.
-	trackerKey := datastore.NewKey(c, "Tracker", subjEvent.Player.StringID(), 0, subjEvent.Clan)
-	if err := datastore.Delete(c, trackerKey); err != nil {
+	if err := event.Send(c, []*event.Event{e, e1}, func(c appengine.Context, evs []*event.Event) error {
+		e1 := evs[0]
+		e2 := evs[1]
+		cl := new(Clan)
+		if err := Get(c, e1.Clan, cl); err != nil {
+			c.Errorf("error getting clan %s", err)
+			return err
+		}
+		e1.ClanName = cl.Name
+		e1.ClanID = cl.ClanID
+		e2.ClanName = cl.Name
+		e2.ClanID = cl.ClanID
+		if err := event.Func(c, evs); err != nil {
+			return err
+		}
+		trackerKey := datastore.NewKey(c, "Tracker", e2.Player.StringID(), 0, e2.Clan)
+		if err := datastore.Delete(c, trackerKey); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	return nil
