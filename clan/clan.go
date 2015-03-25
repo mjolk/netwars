@@ -471,6 +471,10 @@ func Join(c appengine.Context, playerStr, inviteStr string) error {
 		if team.AmountPlayers > MAXMEMBER-1 {
 			return errors.New("Full Clan")
 		}
+		tracker := new(event.Tracker)
+		trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, invite.Clan)
+		keys = append(keys, trackerKey)
+		models = append(models, tracker)
 		iplayer.ClanKey = invite.Clan
 		iplayer.ClanTag = team.Tag
 		iplayer.Clan = team.Name

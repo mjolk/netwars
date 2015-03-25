@@ -121,6 +121,7 @@ type Player struct {
 	DeviceID         string                        `json:"-" datastore:",noindex"`
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"programs, omitempty" datastore:"-"`
+	Tracker          event.Tracker                 `json:"tracker" datastore:"-"`
 }
 
 func (p Player) Range() (float64, float64) {
@@ -247,18 +248,27 @@ func Get(c appengine.Context, playerStr string, player *Player) (*datastore.Key,
 	return playerKey, nil
 }
 
-func Status(c appengine.Context, playerStr string, player *Player) error {
+func Status(c appengine.Context, playerStr string, iplayer *Player) error {
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return err
 	}
-	if err := datastore.Get(c, playerKey, player); err != nil {
+	if err := datastore.Get(c, playerKey, iplayer); err != nil {
 		return err
 	}
-	player.Key = playerKey
-	player.Programs = make(map[int64]*PlayerProgramGroup)
-	player.BandwidthUsage = 0
-	player.Bandwidth = 0
+	trackerCh := make(chan event.Tracker)
+	go func() {
+		trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
+		tracker := new(event.Tracker)
+		if err := datastore.Get(c, trackerKey, tracker); err != nil {
+			c.Errorf("error retrieving tracker: %s", err)
+		}
+		trackerCh <- *tracker
+	}()
+	iplayer.Key = playerKey
+	iplayer.Programs = make(map[int64]*PlayerProgramGroup)
+	iplayer.BandwidthUsage = 0
+	iplayer.Bandwidth = 0
 	var cnt int
 	q := datastore.NewQuery("PlayerProgram").Ancestor(playerKey)
 	for t := q.Run(c); ; {
@@ -279,51 +289,52 @@ func Status(c appengine.Context, playerStr string, player *Player) error {
 		var group *PlayerProgramGroup
 		var yGroup *PlayerProgramGroup
 		var mapOk bool
-		group, mapOk = player.Programs[pp.Type]
+		group, mapOk = iplayer.Programs[pp.Type]
 		if !mapOk {
 			group = new(PlayerProgramGroup)
 			group.Type = program.ProgramName[pp.Type]
 			group.Programs = make([]*PlayerProgram, 0)
-			player.Programs[pp.Type] = group
+			iplayer.Programs[pp.Type] = group
 			cnt++
 		}
 		if pp.Active && program.CONN&pp.Type == 0 {
 			group.Usage += pp.Usage
-			player.BandwidthUsage += pp.Usage
+			iplayer.BandwidthUsage += pp.Usage
 		}
 		if pp.Yield > 0 {
-			yGroup, mapOk = player.Programs[pp.EffectorTypes] // programs with yield have only one effectortype for now
+			yGroup, mapOk = iplayer.Programs[pp.EffectorTypes] // programs with yield have only one effectortype for now
 			if !mapOk {
 				yGroup = new(PlayerProgramGroup)
 				yGroup.Type = program.ProgramName[pp.EffectorTypes]
 				yGroup.Programs = make([]*PlayerProgram, 0)
 				yGroup.Usage = 0.0
-				player.Programs[pp.EffectorTypes] = yGroup
+				iplayer.Programs[pp.EffectorTypes] = yGroup
 				cnt++
 			}
 			yGroup.Power = true
 			if pp.Active {
-				player.Bandwidth += pp.Yield
+				iplayer.Bandwidth += pp.Yield
 				yGroup.Yield += pp.Yield
 			}
 		}
 		group.Power = true
 		group.Programs = append(group.Programs, &pp)
 	}
-	player.PlayerPrograms = make([]*PlayerProgramGroup, cnt)
-	for cType, cGroup := range player.Programs {
+	iplayer.PlayerPrograms = make([]*PlayerProgramGroup, cnt)
+	for cType, cGroup := range iplayer.Programs {
 		cnt--
-		player.PlayerPrograms[cnt] = cGroup
+		iplayer.PlayerPrograms[cnt] = cGroup
 		ignoreTypes := program.CONN | program.INF
 		if cType == ignoreTypes&cType {
 			continue
 		}
-		usage := float64(player.Bandwidth) - player.BandwidthUsage
+		usage := float64(iplayer.Bandwidth) - iplayer.BandwidthUsage
 		ppusage := float64(cGroup.Yield) - cGroup.Usage
 		if usage <= 0.0 || ppusage <= 0.0 {
 			cGroup.Power = false
 		}
 	}
+	iplayer.Tracker = <-trackerCh
 	return nil
 }
 
@@ -434,89 +445,111 @@ func Create(c appengine.Context, nick, email string) (string, map[string]int, er
 	return playerKey.Encode(), nil, nil
 }
 
-/*func Events(c appengine.Context, playerStr, loc, cursorStr string) (*EventList, error) {
-	switch loc {
-	case "locals":
-		loc = LOCAL
-	case "globals":
-		loc = GLOBAL
-	default:
-		return errors.New("invalid event type")
+func Tracker(c appengine.Context, playerStr, clanStr string) (event.Tracker, error) {
+	playerKey, err := datastore.DecodeKey(playerStr)
+	if err != nil {
+		return event.Tracker{}, err
 	}
-	events := make([]*Event, 20, 20)
-	player := new(user.Player)
-	if err := Get(c, playerStr, player); err != nil {
-		return nil, err
+	//postFix := "local"
+	trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
+	if clanStr != "" {
+		//postFix = "global"
+		clanKey, err := datastore.DecodeKey(clanStr)
+		if err != nil {
+			return event.Tracker{}, err
+		}
+		trackerKey = datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, clanKey)
+	}
+	//memKey := playerKey.StringID() + postFix
+	tracker := new(event.Tracker)
+	//if !cache.Get(c, memKey, tracker) {
+	if err := datastore.Get(c, trackerKey, tracker); err != nil {
+		return event.Tracker{}, err
+	}
+	//	cache.Add(c, memKey, tracker)
+	//}
+	return *tracker, nil
+}
+
+func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventList, error) {
+	events := make([]*event.Event, 20, 20)
+	iplayer := new(Player)
+	playerKey, err := Get(c, playerStr, iplayer)
+	if err != nil {
+		return event.EventList{}, err
 	}
 	var queryKey *datastore.Key
-	if loc == GLOBAL {
-		if player.ClanMember == nil {
-			return nil, errors.New("Player not in a clan: no global events")
+	if loc == event.GLOBAL {
+		if iplayer.ClanKey == nil {
+			return event.EventList{}, errors.New("Player not in a clan: no global events")
 		}
-		queryKey = player.ClanMember.Parent()
+		queryKey = iplayer.ClanKey
 	} else {
-		queryKey = player.Key
+		queryKey = playerKey
 	}
 	// reset event trackers
+	doneCh := make(chan int)
 	go func() {
+		var clanStr string
+		var trackerKey *datastore.Key
 		switch loc {
-		case GLOBAL:
-			member := new(clan.ClanMember)
-			if err := datastore.Get(c, player.ClanMember, member); err != nil {
-				c.Errorf("error getting member %s", err)
-			}
-			if member.NewGlobals > 0 {
-				member.NewGlobals = 0
-				if _, err := datastore.Put(c, player.ClanMember, member); err != nil {
-					c.Errorf("error saving member %s", err)
-				}
-			}
-		case LOCAL:
-			if player.NewLocals > 0 {
-				player.NewLocals = 0
-				if _, err := datastore.Put(c, key, player); err != nil {
-					c.Errorf("error saving player %s", err)
-				}
+		case event.GLOBAL:
+			clanStr = iplayer.ClanKey.Encode()
+			trackerKey = datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, iplayer.ClanKey)
+		case event.LOCAL:
+			clanStr = ""
+			trackerKey = datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
+		}
+		tracker, err := Tracker(c, playerStr, clanStr)
+		if err != nil {
+			c.Errorf("error fetching tracker %s", err)
+		}
+		if tracker.EventCount > 0 {
+			tracker.EventCount = 0
+			if _, err := datastore.Put(c, trackerKey, tracker); err != nil {
+				c.Errorf("error saving global tracker %s", err)
 			}
 		}
 		doneCh <- 0
 	}()
 	filter := fmt.Sprintf("%s =", loc)
 	q := datastore.NewQuery("Event").Filter(filter, queryKey).Order("-Created").Limit(20)
-	<-profileCh
 	//TODO move access to central management
 	//only paying users/ moderator/ admin can access more than the last 20 events either global or local
-	access := user.PUSER | user.MOD | user.ADMIN
-	if len(cursorStr) > 0 && player.Access&access != 0 {
+	access := PUSER | MOD | ADMIN
+	if len(cursorStr) > 0 && iplayer.Access&access != 0 {
 		cursor, err := datastore.DecodeCursor(cursorStr)
 		if err != nil {
-			return nil, err
+			return event.EventList{}, err
 		}
 		q = q.Start(cursor)
 	}
 	var ec int
 	it := q.Run(c)
 	for {
-		var event Event
-		_, err := it.Next(&event)
+		var e event.Event
+		_, err := it.Next(&e)
 		if err == datastore.Done {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return event.EventList{}, err
 		}
-		events[ec] = &event
+		if loc == event.GLOBAL && e.Player.Equal(playerKey) {
+			continue
+		}
+		events[ec] = &e
 		ec++
 	}
 	newCursor, err := it.Cursor()
 	if err != nil {
-		return nil, err
+		return event.EventList{}, err
 	}
 	events = events[:ec]
-	list := &EventList{
+	list := event.EventList{
 		Events: events,
 		Cursor: newCursor.String(),
 	}
 	<-doneCh
 	return list, nil
-}*/
+}

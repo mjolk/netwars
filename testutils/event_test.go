@@ -91,7 +91,10 @@ func TestNotify2(t *testing.T) {
 	pl.ClanKey = clanKey
 	pl.Clan = CLAN1
 	pl.ClanTag = "lol"
-	if _, err := datastore.Put(c, playerKey2, pl); err != nil {
+	tracker := new(event.Tracker)
+	trackerKey := datastore.NewKey(c, "Tracker", playerKey2.StringID(), 0, clanKey)
+	if _, err := datastore.PutMulti(c, []*datastore.Key{playerKey2, trackerKey},
+		[]interface{}{pl, tracker}); err != nil {
 		t.Fatalf("\n error saving player %s", err)
 	}
 	playerKey, _ := datastore.DecodeKey(playerStr)

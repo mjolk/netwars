@@ -112,7 +112,7 @@ func ClanInvite(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ClanCreate(w http.ResponseWriter, r *http.Request) {
+func CreateClan(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	clanName := r.FormValue("name")
 	player := r.FormValue("pkey")

@@ -165,12 +165,12 @@ func GetPlayerList(w http.ResponseWriter, r *http.Request) {
 func StatusPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	playerstr := r.FormValue("pkey")
-	player := new(Player)
+	iplayer := new(Player)
 	var res utils.JSONResult
-	if err := Status(c, playerstr, player); err != nil {
+	if err := Status(c, playerstr, iplayer); err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: player}
+		res = utils.JSONResult{Success: true, Result: iplayer}
 	}
 	res.JSONf(w)
 }
@@ -288,5 +288,32 @@ func EditAvatar(w http.ResponseWriter, r *http.Request) {
 	} else {
 		res = utils.JSONResult{Success: true, Result: uploadURL.String()}
 	}
+	res.JSONf(w)
+}
+
+func PlayerTracker(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	playerKey := r.FormValue("pkey")
+	clanKey := r.FormValue("ckey")
+	var res utils.JSONResult
+	tracker, err := Tracker(c, playerKey, clanKey)
+	if err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	}
+	res = utils.JSONResult{Success: true, Result: tracker}
+	res.JSONf(w)
+}
+
+func EventList(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	playerKey := r.FormValue("pkey")
+	cursor := r.FormValue("c")
+	loc := r.FormValue("loc")
+	var res utils.JSONResult
+	events, err := Events(c, playerKey, loc, cursor)
+	if err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	}
+	res = utils.JSONResult{Success: true, Result: events}
 	res.JSONf(w)
 }
