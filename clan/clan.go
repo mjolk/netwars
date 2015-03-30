@@ -14,7 +14,6 @@ import (
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/player"
 	"regexp"
-	"strconv"
 	"time"
 )
 
@@ -37,6 +36,24 @@ var ClanMemberError = errors.New("Player not in a clan")
 
 var clanNameRegex, _ = regexp.Compile(CLANNAMEREGEX)
 var clanTagRegex, _ = regexp.Compile(CLANTAGREGEX)
+
+type SendKey struct {
+	Key string `json:"key"` //connection key
+}
+
+type Pmanipulation struct {
+	PlayerID int64 `json:"player_id"` //player id
+}
+
+type Creation struct {
+	Tag  string `json:"tag"`
+	Name string `json:"name"`
+}
+
+type Promotion struct {
+	PlayerID int64 `json:"player_id"`
+	Rank     int64 `json:"rank"`
+}
 
 type Clan struct {
 	Tag            string `json:"clan_tag"`
@@ -66,7 +83,7 @@ type Invite struct {
 	InvitedBy     *datastore.Key
 	InvitedByName string
 	Invited       time.Time
-	Key           *datastore.Key `datastore:"-"`
+	DbKey         *datastore.Key `datastore:"-"`
 }
 
 //parent clan
@@ -81,7 +98,6 @@ type ClanConnection struct {
 }
 
 type MessageUpdate struct {
-	Pkey    string
 	Content string
 }
 
@@ -120,22 +136,22 @@ func NewInvite(c appengine.Context, clan *Clan, invitee, player *player.Player) 
 		Expires:       expires,
 		Clan:          player.ClanKey,
 		ClanName:      clan.Name,
-		Player:        invitee.Key,
+		Player:        invitee.DbKey,
 		PlayerName:    invitee.Nick,
-		InvitedBy:     player.Key,
+		InvitedBy:     player.DbKey,
 		InvitedByName: player.Nick,
 		Invited:       now,
 	}
 	return invite
 }
 
-func InvitesForPlayer(c appengine.Context, playerStr string) ([]*Invite, error) {
+func InvitesForPlayer(c appengine.Context, playerStr string) ([]Invite, error) {
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return nil, err
 	}
 	invMemKey := playerKey.StringID() + "Invite"
-	invites := make([]*Invite, 0)
+	invites := make([]Invite, 0)
 	if !cache.Get(c, invMemKey, invites) {
 		q := datastore.NewQuery("Invite").Filter("Player =", playerKey).Filter("Expires >", time.Now())
 		for it := q.Run(c); ; {
@@ -147,8 +163,8 @@ func InvitesForPlayer(c appengine.Context, playerStr string) ([]*Invite, error) 
 			if err != nil {
 				return nil, err
 			}
-			invite.Key = key
-			invites = append(invites, &invite)
+			invite.DbKey = key
+			invites = append(invites, invite)
 		}
 		cache.Add(c, invMemKey, invites)
 	}
@@ -191,7 +207,7 @@ func Status(c appengine.Context, clanStr string, team *Clan) error {
 		if err != nil {
 			return err
 		}
-		member.Key = key
+		member.DbKey = key
 		team.Members[cnt] = &member
 		team.BandwidthUsage += member.BandwidthUsage
 		team.Cps += member.Cps
@@ -436,6 +452,9 @@ func leaveInterval(c appengine.Context, playerKey *datastore.Key) (bool, string,
 
 func Join(c appengine.Context, playerStr, inviteStr string) error {
 	inviteKey, err := datastore.DecodeKey(inviteStr)
+	if err != nil {
+		return err
+	}
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return err
@@ -523,9 +542,8 @@ func inviteBarrier(c appengine.Context, clanKey *datastore.Key) error {
 	return nil
 }
 
-func InvitePlayer(c appengine.Context, playerStr, inviteeIDStr string) error {
+func InvitePlayer(c appengine.Context, playerStr string, inviteeID int64) error {
 	playerKey, err := datastore.DecodeKey(playerStr)
-	inviteeID, err := strconv.ParseInt(inviteeIDStr, 10, 64)
 	if err != nil {
 		return err
 	}
@@ -539,8 +557,8 @@ func InvitePlayer(c appengine.Context, playerStr, inviteeIDStr string) error {
 		[]interface{}{iplayer, invitedPlayer}); err != nil {
 		return err
 	}
-	iplayer.Key = playerKey
-	invitedPlayer.Key = inviteeKey
+	iplayer.DbKey = playerKey
+	invitedPlayer.DbKey = inviteeKey
 	if iplayer.MemberType < player.LIEUTENANT {
 		return ClanMemberTypeError
 	}
@@ -849,15 +867,10 @@ func checkLeaderShip(c appengine.Context, clanKey *datastore.Key) (int64, error)
 	return int64(count), nil
 }
 
-func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error {
+func PromoteOrDemote(c appengine.Context, playerStr string, promoteID, rk int64) error {
 	playerKey, err := datastore.DecodeKey(playerStr)
-	promoteID, err := strconv.ParseInt(target, 10, 64)
 	if err != nil {
 		return err
-	}
-	rk, ok := player.MemberType[rank]
-	if !ok {
-		return errors.New("Unknown rank")
 	}
 	promoteKey, err := player.KeyByID(c, promoteID)
 	if err != nil {
@@ -896,7 +909,7 @@ func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error 
 		}
 	}
 	if promotePlayer.MemberType == rk {
-		return errors.New(fmt.Sprintf("Player already has rank : %s", rank))
+		return errors.New(fmt.Sprintf("Player already has rank : %s", rk))
 	}
 	var action string
 	if rk < promotePlayer.MemberType {
@@ -961,8 +974,8 @@ func PromoteOrDemote(c appengine.Context, playerStr, target, rank string) error 
 	return nil
 }
 
-func UpdateMessage(c appengine.Context, update *MessageUpdate) error {
-	playerKey, err := datastore.DecodeKey(update.Pkey)
+func UpdateMessage(c appengine.Context, playerKeyStr string, update *MessageUpdate) error {
+	playerKey, err := datastore.DecodeKey(playerKeyStr)
 	if err != nil {
 		return err
 	}
@@ -1006,9 +1019,8 @@ func Delete(c appengine.Context, pkey string) error {
 	return nil
 }
 
-func Kick(c appengine.Context, playerStr, target string) error {
+func Kick(c appengine.Context, playerStr string, kickedPlayerID int64) error {
 	playerKey, err := datastore.DecodeKey(playerStr)
-	kickedPlayerID, err := strconv.ParseInt(target, 10, 64)
 	if err != nil {
 		return err
 	}

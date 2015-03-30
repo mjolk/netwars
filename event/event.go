@@ -37,7 +37,8 @@ var (
 		"OUT": 1,
 	}
 
-	templates = template.Must(template.ParseFiles("./Invite_email.tmpl"))
+	templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
+	//templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl"))//testing
 )
 
 //CLAN parent: clan  key: playerkey
@@ -269,8 +270,8 @@ func Send(c appengine.Context, em []*Event, e EventFunc) error {
 }
 
 type EventList struct {
-	Events []*Event `json:"events"`
-	Cursor string   `json:"c"`
+	Events []Event `json:"events"`
+	Cursor string  `json:"c"`
 }
 
 func NewEventID(c appengine.Context, cntCh chan<- int64) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"mj0lk.be/netwars/program"
 	"mj0lk.be/netwars/testutils"
+	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -49,11 +50,12 @@ func TestCreate(t *testing.T) {
 		t.Fatalf("NewContext: %v", err)
 	}
 	defer c.Close()
-	playerKeyStr, usererr, err := Create(c, TESTNICK, TESTEMAIL)
+	cr := Creation{TESTEMAIL, TESTNICK, "testpassword"}
+	tokenStr, usererr, err := Create(c, cr)
 	if err != nil {
 		t.Fatalf("error creating player : %s", err)
 	}
-	if len(playerKeyStr) == 0 {
+	if len(tokenStr) == 0 {
 		t.Fatalf("no player key generated \n")
 	}
 	if usererr["nick"]+usererr["email"] > 0 {
@@ -67,18 +69,18 @@ func TestUpdateProfile(t *testing.T) {
 		t.Fatalf("NewContext: %v", err)
 	}
 	defer c.Close()
-	playerKeyStr, usererr, err := Create(c, TESTNICK, TESTEMAIL)
+	cr := Creation{TESTEMAIL, TESTNICK, "testpassword"}
+	tokenStr, usererr, err := Create(c, cr)
 	if err != nil {
 		t.Fatalf("error creating player : %s", err)
 	}
-	if len(playerKeyStr) == 0 {
+	if len(tokenStr) == 0 {
 		t.Fatalf("no player key generated \n")
 	}
 	if len(usererr) > 0 {
 		t.Fatalf("Unexpected user error creating player: %v \n", usererr)
 	}
 	profileUpdate := ProfileUpdate{
-		Key:       playerKeyStr,
 		Name:      "Dries",
 		Birthday:  "1979-Apr-13",
 		Country:   "Belgium",
@@ -86,8 +88,8 @@ func TestUpdateProfile(t *testing.T) {
 		Address:   "PLantin & Moretuslei 2018 Antwerpen",
 		Signature: "Carpe Diem",
 	}
-
-	if err := UpdateProfile(c, profileUpdate); err != nil {
+	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	if err := UpdateProfile(c, playerKeyStr, profileUpdate); err != nil {
 		t.Fatalf("Error updating profile")
 	}
 
@@ -103,7 +105,8 @@ func TestUpdateProfile(t *testing.T) {
 }
 
 func setupPlayer(c appengine.Context) (string, error) {
-	playerKeyStr, usererr, err := Create(c, TESTNICK, TESTEMAIL)
+	cr := Creation{TESTEMAIL, TESTNICK, "testpassword"}
+	tokenStr, usererr, err := Create(c, cr)
 	if err != nil {
 		return "", err
 
@@ -111,6 +114,7 @@ func setupPlayer(c appengine.Context) (string, error) {
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
+	playerKeyStr, _ := utils.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 
@@ -181,10 +185,13 @@ func TestAllocate(t *testing.T) {
 	if err := setupProgram(c); err != nil {
 		t.Fatalf("setup program error %s", err)
 	}
-	if err := Allocate(c, playerKeyStr, connectorKey.Encode(), "1"); err != nil {
+	all := Allocation{connectorKey.Encode(), 1}
+	if err := Allocate(c, playerKeyStr, all); err != nil {
 		t.Fatalf("allocate1 error %s \n", err)
 	}
-	if err := Allocate(c, playerKeyStr, programKey.Encode(), "5"); err != nil {
+	all.PrgKey = programKey.Encode()
+	all.Amount = 5
+	if err := Allocate(c, playerKeyStr, all); err != nil {
 		t.Fatalf("allocate2 error :%+v \n", err)
 	}
 	player := new(Player)
@@ -210,11 +217,13 @@ func TestDeallocate(t *testing.T) {
 	}
 	connectorKey := datastore.NewKey(c, "Program", PROGRAM1, 0, nil)
 	programKey := datastore.NewKey(c, "Program", PROGRAM2, 0, nil)
-	if err := Allocate(c, playerKeyStr, connectorKey.Encode(), "1"); err != nil {
+	all := Allocation{connectorKey.Encode(), 1}
+	if err := Allocate(c, playerKeyStr, all); err != nil {
 		t.Fatalf("allocate error %s \n", err)
 	}
-
-	if err := Allocate(c, playerKeyStr, programKey.Encode(), "5"); err != nil {
+	all.PrgKey = programKey.Encode()
+	all.Amount = 5
+	if err := Allocate(c, playerKeyStr, all); err != nil {
 		t.Fatalf("allocate error: %s \n", err)
 	}
 
@@ -223,8 +232,8 @@ func TestDeallocate(t *testing.T) {
 		t.Fatalf(" status err : %s", err)
 	}
 	checkProgram(t, player, PROGRAM2, 5)
-
-	if err := Deallocate(c, playerKeyStr, programKey.Encode(), "3"); err != nil {
+	all.Amount = 3
+	if err := Deallocate(c, playerKeyStr, all); err != nil {
 		t.Fatalf("deallocation error: %s \n", err)
 	}
 

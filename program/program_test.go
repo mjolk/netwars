@@ -91,7 +91,7 @@ func TestGetAll(t *testing.T) {
 		t.Fatalf("error: %s", err)
 	}
 	time.Sleep(1 * time.Second)
-	nprograms := make(map[string][]*Program)
+	nprograms := make(map[string][]Program)
 	if err := GetAll(c, nprograms); err != nil {
 		t.Fatalf("error: %s", err)
 	}

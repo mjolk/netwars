@@ -65,7 +65,6 @@ type Profile struct {
 }
 
 type ProfileUpdate struct {
-	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Birthday  string `json:"birthday"`
 	Country   string `json:"country"`
@@ -75,8 +74,8 @@ type ProfileUpdate struct {
 }
 
 type PlayerList struct {
-	Cursor  string     `json:"c"`
-	Players []*Profile `json:"players"`
+	Cursor  string    `json:"c"`
+	Players []Profile `json:"players"`
 }
 
 //parent profile
@@ -108,19 +107,19 @@ func (p *Profile) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(p, c)
 }
 
-func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, error) {
+func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, error) {
 	playerKey, err := datastore.DecodeKey(pkeyStr)
 	attackRange, err := strconv.ParseBool(rangeStr)
 	if err != nil {
-		return nil, err
+		return PlayerList{}, err
 	}
-	profiles := make([]*Profile, 0, LIMIT)
+	profiles := make([]Profile, 0, LIMIT)
 	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
 		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	if attackRange {
 		player := new(Player)
 		if err := datastore.Get(c, playerKey, player); err != nil {
-			return nil, err
+			return PlayerList{}, err
 		}
 		rangeLo, rangeHi := player.Range()
 		q = q.Filter("BandwidthUsage >", rangeLo).
@@ -129,7 +128,7 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 	if len(cursor) > 0 {
 		cur, err := datastore.DecodeCursor(cursor)
 		if err != nil {
-			return nil, err
+			return PlayerList{}, err
 		}
 		q = q.Start(cur)
 	}
@@ -141,15 +140,15 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 			break
 		}
 		if err != nil {
-			return nil, err
+			return PlayerList{}, err
 		}
-		profiles = append(profiles, &profile)
+		profiles = append(profiles, profile)
 	}
 	newCur, err := t.Cursor()
 	if err != nil {
-		return nil, err
+		return PlayerList{}, err
 	}
-	list := &PlayerList{
+	list := PlayerList{
 		Cursor:  newCur.String(),
 		Players: profiles,
 	}
@@ -157,8 +156,8 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (*PlayerList, e
 	return list, nil
 }
 
-func UpdateProfile(c appengine.Context, update ProfileUpdate) error {
-	playerKey, err := datastore.DecodeKey(update.Key)
+func UpdateProfile(c appengine.Context, playerStr string, update ProfileUpdate) error {
+	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return err
 	}

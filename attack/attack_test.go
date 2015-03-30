@@ -9,6 +9,7 @@ import (
 	"mj0lk.be/netwars/player"
 	"mj0lk.be/netwars/program"
 	"mj0lk.be/netwars/testutils"
+	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -194,7 +195,8 @@ func setupPrograms(c appengine.Context) error {
 }
 
 func setupPlayer(c appengine.Context, nick string, email string) (string, error) {
-	playerKeyStr, usererr, err := player.Create(c, nick, email)
+	cr := player.Creation{email, nick, "testpassword"}
+	tokenStr, usererr, err := player.Create(c, cr)
 	if err != nil {
 		return "", err
 
@@ -202,6 +204,7 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
+	playerKeyStr, _ := utils.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 
@@ -266,19 +269,28 @@ func TestSpy(t *testing.T) {
 	intKey := datastore.NewKey(c, "Program", INTP, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := player.Allocate(c, attackerStr, intConnKey.Encode(), "1"); err != nil {
+	all := player.Allocation{intConnKey.Encode(), 1}
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := player.Allocate(c, attackerStr, intKey.Encode(), "1"); err != nil {
+	all.PrgKey = intKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker spy program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	all.PrgKey = hkConnKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	all.PrgKey = hkKey.Encode()
+	all.Amount = 5
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkKey2.Encode(), "5"); err != nil {
+	all.PrgKey = hkKey2.Encode()
+	all.Amount = 5
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
 	/*	if err := player.Allocate(c, defenderStr, swarmConnKey.Encode(), "1"); err != nil {
@@ -334,10 +346,13 @@ func TestIce(t *testing.T) {
 	}
 	iceConnKey := datastore.NewKey(c, "Program", ICECONN, 0, nil)
 	iceKey := datastore.NewKey(c, "Program", ICEP, 0, nil)
-	if err := player.Allocate(c, attackerStr, iceConnKey.Encode(), "1"); err != nil {
+	all := player.Allocation{iceConnKey.Encode(), 1}
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate ice connection error %s \n", err)
 	}
-	if err := player.Allocate(c, attackerStr, iceKey.Encode(), "1"); err != nil {
+	all.PrgKey = iceKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker spy program error %s \n", err)
 	}
 	attackPrograms, err := getActiveProgram(c, attackerKey, program.ICE)
@@ -403,22 +418,33 @@ func TestAttack(t *testing.T) {
 	//d0sKey := datastore.NewKey(c, "Program", D0S, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := player.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
+	all := player.Allocation{swarmConnKey.Encode(), 1}
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := player.Allocate(c, attackerStr, swarmKey.Encode(), "2"); err != nil {
+	all.PrgKey = swarmKey.Encode()
+	all.Amount = 2
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker offensive program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	all.PrgKey = hkConnKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	all.PrgKey = hkKey.Encode()
+	all.Amount = 5
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
+	all.PrgKey = d0sConnKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
+	all.PrgKey = d0sKey.Encode()
+	all.Amount = 10
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
 	attackPrograms, err := getAttackPrograms(c, attackerKey)
@@ -498,22 +524,33 @@ func TestAttackWithClan(t *testing.T) {
 	//d0sKey := datastore.NewKey(c, "Program", D0S, 0, nil)
 	//mutConnKey := datastore.NewKey(c, "Program", MUTCONN, 0, nil)
 	//mutKey := datastore.NewKey(c, "Program", MUTATOR, 0, nil)
-	if err := player.Allocate(c, attackerStr, swarmConnKey.Encode(), "1"); err != nil {
+	all := player.Allocation{swarmConnKey.Encode(), 1}
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker connection error %s \n", err)
 	}
-	if err := player.Allocate(c, attackerStr, swarmKey.Encode(), "4"); err != nil {
+	all.PrgKey = swarmKey.Encode()
+	all.Amount = 4
+	if err := player.Allocate(c, attackerStr, all); err != nil {
 		t.Fatalf("allocate attacker offensive program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkConnKey.Encode(), "1"); err != nil {
+	all.PrgKey = hkConnKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program connection error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, hkKey.Encode(), "5"); err != nil {
+	all.PrgKey = hkKey.Encode()
+	all.Amount = 5
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, d0sConnKey.Encode(), "1"); err != nil {
+	all.PrgKey = d0sConnKey.Encode()
+	all.Amount = 1
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
-	if err := player.Allocate(c, defenderStr, d0sKey.Encode(), "10"); err != nil {
+	all.PrgKey = d0sKey.Encode()
+	all.Amount = 10
+	if err := player.Allocate(c, defenderStr, all); err != nil {
 		t.Fatalf("allocate defending program error %s \n", err)
 	}
 	attackPrograms, err := getAttackPrograms(c, attackerKey)

@@ -9,7 +9,7 @@ import (
 
 func GetAllPrograms(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
-	programs := make(map[string][]*Program)
+	programs := make(map[string][]Program)
 	var res utils.JSONResult
 	if err := GetAll(c, programs); err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
@@ -21,7 +21,7 @@ func GetAllPrograms(w http.ResponseWriter, r *http.Request) {
 
 func GetProgram(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
-	pKey := r.FormValue("pkey")
+	pKey := utils.Pkey(r)
 	var res utils.JSONResult
 	program, err := Get(c, pKey)
 	if err != nil {

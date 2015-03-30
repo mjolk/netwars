@@ -4,9 +4,11 @@ import (
 	"appengine"
 	"appengine/aetest"
 	"appengine/datastore"
+	"errors"
 	"mj0lk.be/netwars/clan"
 	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/player"
+	"mj0lk.be/netwars/utils"
 	"testing"
 )
 
@@ -19,12 +21,18 @@ const (
 	TESTEMAIL2 = "testemail_1@mail.com"
 )
 
-func setupPlayer(c appengine.Context, nick, email string) (string, error) {
-	playerStr, _, err := player.Create(c, nick, email)
+func setupPlayer(c appengine.Context, nick string, email string) (string, error) {
+	cr := player.Creation{email, nick, "testpassword"}
+	tokenStr, usererr, err := player.Create(c, cr)
 	if err != nil {
 		return "", err
+
 	}
-	playerKey, _ := datastore.DecodeKey(playerStr)
+	if usererr != nil {
+		return "", errors.New("unexpected user error")
+	}
+	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKey, _ := datastore.DecodeKey(playerKeyStr)
 	notif := event.PlayerNotification{
 		EventType:        "Invite",
 		NotificationType: "Email",
@@ -34,7 +42,7 @@ func setupPlayer(c appengine.Context, nick, email string) (string, error) {
 	if _, err := datastore.Put(c, notifKey, &notif); err != nil {
 		return "", err
 	}
-	return playerStr, nil
+	return playerKeyStr, nil
 }
 
 func TestNotify(t *testing.T) {

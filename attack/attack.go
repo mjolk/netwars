@@ -140,12 +140,12 @@ func (window *AttackWindow) AddReceiver(atype int64, a *AttackEventProgram) {
 	}
 	if len(window.UpdatedKeys) > 0 {
 		for _, key := range window.UpdatedKeys {
-			if key.Equal(a.PlayerProgram.Key) {
+			if key.Equal(a.PlayerProgram.DbKey) {
 				return
 			}
 		}
 	}
-	window.UpdatedKeys = append(window.UpdatedKeys, a.PlayerProgram.Key)
+	window.UpdatedKeys = append(window.UpdatedKeys, a.PlayerProgram.DbKey)
 	window.Updated = append(window.Updated, a)
 }
 
@@ -188,7 +188,7 @@ func (frame *AttackFrame) AddDealer(a *AttackEventProgram) {
 
 func (frame *AttackFrame) AddReceiver(a *AttackEventProgram) {
 	for _, rec := range frame.Receiving {
-		if rec.PlayerProgram.Key.Equal(a.PlayerProgram.Key) {
+		if rec.PlayerProgram.DbKey.Equal(a.PlayerProgram.DbKey) {
 			return
 		}
 	}
@@ -340,12 +340,12 @@ func NewAttackEvent(t int64, dir int64, player, target *player.Player) *AttackEv
 		t,
 		&event.Event{
 			Created:    now,
-			Player:     player.Key,
+			Player:     player.DbKey,
 			Clan:       player.ClanKey,
 			ClanName:   target.Clan,
 			Direction:  dir,
 			EventType:  "Attack",
-			Target:     target.Key,
+			Target:     target.DbKey,
 			Action:     AttackName[t],
 			PlayerName: player.Nick,
 			PlayerID:   player.PlayerID,

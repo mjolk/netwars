@@ -70,7 +70,7 @@ func (s *ProgramMap) Set(key string, value *Program) {
 
 type Program struct {
 	EncodedKey     string         `datastore:"-" json:"program_key"`
-	Key            *datastore.Key `datastore:"-" json:"-"`
+	DbKey          *datastore.Key `datastore:"-" json:"-"`
 	Name           string         `json:"name"`
 	Attack         int64          `json:"attack"`
 	Life           int64          `json:"life"`
@@ -146,7 +146,7 @@ func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
 			return nil, err
 		}
 		program.Name = stringId
-		program.Key = pKey
+		program.DbKey = pKey
 		program.EncodedKey = pKey.Encode()
 		cache.Set(c, stringId, program)
 	}
@@ -166,7 +166,7 @@ func Get(c appengine.Context, pKeyStr string) (*Program, error) {
 	return program, nil
 }
 
-func GetAll(c appengine.Context, programs map[string][]*Program) error {
+func GetAll(c appengine.Context, programs map[string][]Program) error {
 	qp := datastore.NewQuery("Program")
 	for t := qp.Run(c); ; {
 		var p Program
@@ -177,10 +177,10 @@ func GetAll(c appengine.Context, programs map[string][]*Program) error {
 		} else if err != nil {
 			return err
 		}
-		p.Key = key
+		p.DbKey = key
 		p.EncodedKey = key.Encode()
 		p.Name = key.StringID()
-		programs[p.TypeName] = append(programs[p.TypeName], &p)
+		programs[p.TypeName] = append(programs[p.TypeName], p)
 
 	}
 	return nil
@@ -237,7 +237,6 @@ func CreateOrUpdate(c appengine.Context, program *Program) error {
 		return err
 	}
 	//get for development
-	c.Debugf("pkey: %v", pkey)
 	if _, err := KeyGet(c, pkey); err != nil {
 		return err
 	}

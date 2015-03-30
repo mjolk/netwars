@@ -2,7 +2,6 @@ package attack
 
 import (
 	"appengine"
-	"encoding/json"
 	"mj0lk.be/netwars/utils"
 	"net/http"
 )
@@ -11,8 +10,8 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	cfg := AttackCfg{}
 	var res utils.JSONResult
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+	if err := utils.DecodeJsonBody(r, &cfg); err != nil {
+		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
 	} else {
 		var response AttackEvent
 		var err error

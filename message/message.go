@@ -37,7 +37,7 @@ type MessageList struct {
 }
 
 type Message struct {
-	Key         *datastore.Key `datastore:"-" json:"-"`
+	DbKey       *datastore.Key `datastore:"-" json:"-"`
 	Pkey        string         `json:"-" datastore:"-"`
 	EncodedKey  string         `datastore:"-" json:"message_key"`
 	PID         int64          `json:"pid" datastore:"-"`  //personal message recipient
@@ -131,7 +131,7 @@ func CreateOrUpdate(c appengine.Context, message *Message) error {
 				}
 				nmssg.Scope = PUBLIC
 			}
-			nmssg.Key = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
+			nmssg.DbKey = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
 		}
 		//new thread
 		if len(message.Bkey) > 0 {
@@ -142,7 +142,7 @@ func CreateOrUpdate(c appengine.Context, message *Message) error {
 			}
 			nmssg.Board = boardKey
 			nmssg.IsThread = true
-			nmssg.Key = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
+			nmssg.DbKey = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
 		} else if len(message.Tkey) > 0 { // new message in thread
 			// new message in thread
 			var tErr error
@@ -150,13 +150,13 @@ func CreateOrUpdate(c appengine.Context, message *Message) error {
 			if tErr != nil {
 				return tErr
 			}
-			nmssg.Key = datastore.NewKey(c, "Message", newmssgGuid, 0, threadKey)
+			nmssg.DbKey = datastore.NewKey(c, "Message", newmssgGuid, 0, threadKey)
 		} else if len(message.Skey) > 0 {
 			subscriberKey, err := datastore.DecodeKey(message.Skey)
 			if err != nil {
 				return err
 			}
-			nmssg.Key = datastore.NewKey(c, "Message", newmssgGuid, 0, subscriberKey)
+			nmssg.DbKey = datastore.NewKey(c, "Message", newmssgGuid, 0, subscriberKey)
 		} else if message.PID > 0 {
 			playerKey, err := player.KeyByID(c, message.PID)
 			if err != nil {
@@ -164,7 +164,7 @@ func CreateOrUpdate(c appengine.Context, message *Message) error {
 			}
 			nmssg.Recipient = playerKey
 			nmssg.Scope = PRIVATE
-			nmssg.Key = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
+			nmssg.DbKey = datastore.NewKey(c, "Message", newmssgGuid, 0, nil)
 		}
 		nmssg.Creator = playerKey
 		nmssg.Signature = iplayer.Signature
@@ -177,7 +177,7 @@ func CreateOrUpdate(c appengine.Context, message *Message) error {
 		nmssg.Access = AccessType[message.AccessName]
 		nmssg.MessageID = <-idCnt
 	}
-	if _, err := datastore.Put(c, nmssg.Key, nmssg); err != nil {
+	if _, err := datastore.Put(c, nmssg.DbKey, nmssg); err != nil {
 		return err
 	}
 	//TODO message events

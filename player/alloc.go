@@ -8,9 +8,13 @@ import (
 	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
-	"strconv"
 	"time"
 )
+
+type Allocation struct {
+	PrgKey string `json:"prgkey"`
+	Amount int64  `json:"amount"`
+}
 
 var NotEnoughBandwidthError = errors.New("not enough bandwidth for programtype")
 var NoProgramToDeallocate = errors.New("Error: no programs to deallocate")
@@ -19,13 +23,16 @@ func PlayerProgramKey(c appengine.Context, playerKey, programKey *datastore.Key)
 	return datastore.NewKey(c, "PlayerProgram", programKey.StringID(), 0, playerKey)
 }
 
-func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
-	programKey, err := datastore.DecodeKey(programStr)
+func Allocate(c appengine.Context, playerStr string, alloc Allocation) error {
+	programKey, err := datastore.DecodeKey(alloc.PrgKey)
+	if err != nil {
+		return err
+	}
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return err
 	}
-	iAmount, _ := strconv.ParseInt(amount, 10, 64)
+	iAmount := alloc.Amount
 	prog, err := program.KeyGet(c, programKey)
 	if err != nil {
 		return err
@@ -65,22 +72,22 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 		pProg := &PlayerProgram{
 			Program:    *prog,
 			ProgramKey: programKey,
-			Key:        pprogramKey,
+			DbKey:      pprogramKey,
 			Active:     true,
 		}
 		if pProgs, ok := player.Programs[prog.Type]; ok {
 			for _, oPprog := range pProgs.Programs {
-				if oPprog.Key.Equal(pprogramKey) {
+				if oPprog.DbKey.Equal(pprogramKey) {
 					pProg = oPprog
 				}
 			}
 		}
 		pProg.Amount += iAmount
 		cycles := prog.Cycles * iAmount
-		memory := int64(prog.Memory * float64(iAmount))
+		memory := int64(math.Ceil(prog.Memory * float64(iAmount)))
 		player.Memory -= memory
 		player.Cycles -= cycles
-		keys := []*datastore.Key{player.Key, pProg.Key}
+		keys := []*datastore.Key{player.DbKey, pProg.DbKey}
 		models := []interface{}{player, pProg}
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
@@ -88,10 +95,10 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 		e := &event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
-			Direction:         event.OUT,
+			Direction:         event.IN,
 			EventType:         "Allocate",
-			TargetName:        player.Nick,
-			TargetID:          player.PlayerID,
+			PlayerName:        player.Nick,
+			PlayerID:          player.PlayerID,
 			NewBandwidthUsage: player.BandwidthUsage + (float64(iAmount) * pProg.BandwidthUsage),
 			Memory:            memory,
 			Action:            "Allocate",
@@ -105,10 +112,10 @@ func Allocate(c appengine.Context, playerStr, programStr, amount string) error {
 	}, nil)
 }
 
-func Deallocate(c appengine.Context, playerStr, programStr, amount string) error {
-	programKey, _ := datastore.DecodeKey(programStr)
-	playerKey, _ := datastore.DecodeKey(playerStr)
-	iAmount, _ := strconv.ParseInt(amount, 10, 64)
+func Deallocate(c appengine.Context, playerKeyStr string, alloc Allocation) error {
+	programKey, _ := datastore.DecodeKey(alloc.PrgKey)
+	playerKey, _ := datastore.DecodeKey(playerKeyStr)
+	iAmount := alloc.Amount
 	prog, err := program.KeyGet(c, programKey)
 	if err != nil {
 		return err
@@ -118,7 +125,7 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 	}
 	return datastore.RunInTransaction(c, func(c appengine.Context) error {
 		player := new(Player)
-		err := Status(c, playerStr, player)
+		err := Status(c, playerKeyStr, player)
 		if err != nil {
 			return err
 		}
@@ -126,7 +133,7 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 		pprogramKey := PlayerProgramKey(c, playerKey, programKey)
 		if pProgs, ok := player.Programs[prog.Type]; ok {
 			for _, pp := range pProgs.Programs {
-				if pp.Key.Equal(pprogramKey) {
+				if pp.DbKey.Equal(pprogramKey) {
 					pProg = pp
 				}
 			}
@@ -140,8 +147,8 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 			return NoProgramToDeallocate
 		}
 		pProg.Amount -= iAmount
-		cycles := int64(float64(pProg.Cycles) * float64(iAmount) * CYCLEYIELD)
-		memory := int64(pProg.Memory * float64(iAmount) * MEMYIELD)
+		cycles := int64(math.Ceil(float64(pProg.Cycles*iAmount) * CYCLEYIELD))
+		memory := int64(math.Ceil(pProg.Memory * float64(iAmount) * MEMYIELD))
 		player.Cycles += cycles
 		player.Memory += memory
 		keys := []*datastore.Key{playerKey, pprogramKey}
@@ -152,10 +159,10 @@ func Deallocate(c appengine.Context, playerStr, programStr, amount string) error
 		e := &event.Event{
 			Player:            playerKey,
 			Created:           time.Now(),
-			Direction:         event.OUT,
+			Direction:         event.IN,
 			EventType:         "Allocate",
-			TargetName:        player.Nick,
-			TargetID:          player.PlayerID,
+			PlayerName:        player.Nick,
+			PlayerID:          player.PlayerID,
 			NewBandwidthUsage: player.BandwidthUsage - (float64(iAmount) * pProg.BandwidthUsage),
 			Memory:            memory,
 			Action:            "Deallocate",

@@ -5,11 +5,13 @@ import (
 	"appengine/datastore"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"mj0lk.be/netwars/cache"
 	"mj0lk.be/netwars/counter"
 	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/utils"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,6 +53,12 @@ var (
 	}
 )
 
+type Creation struct {
+	Email    string `json:"email"`
+	Nick     string `json:"nick"`
+	Password string `json:"pwd"`
+}
+
 type Unique struct {
 	Created time.Time
 }
@@ -65,6 +73,7 @@ type PlayerProgramGroup struct {
 
 //parent = player
 type PlayerProgram struct {
+	DbKey      *datastore.Key `json:"-" datastore:"-"`
 	Source     string         `json:"source"`
 	Amount     int64          `json:"amount"`
 	ProgramKey *datastore.Key `json:"-"`
@@ -79,7 +88,7 @@ type PlayerProgram struct {
 
 type Player struct {
 	EncodedKey       string                        `datastore:"-" json:"key"`
-	Key              *datastore.Key                `datastore:"-" json:"-"`
+	DbKey            *datastore.Key                `datastore:"-" json:"-"`
 	Cps              int64                         `json:"cps"`
 	Aps              int64                         `json:"aps"`
 	EncodedClan      string                        `datastore:"-" json:"clan_member"`
@@ -122,6 +131,7 @@ type Player struct {
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"programs, omitempty" datastore:"-"`
 	Tracker          event.Tracker                 `json:"tracker" datastore:"-"`
+	Pass             []byte                        `json:"-" datastore:"-"`
 }
 
 func (p Player) Range() (float64, float64) {
@@ -155,6 +165,7 @@ func (pp *PlayerProgram) Load(c <-chan datastore.Property) error {
 			pp.Amount = 0
 		}
 	}
+	pp.Program.EncodedKey = pp.ProgramKey.Encode()
 	return nil
 }
 
@@ -162,6 +173,7 @@ func (pp *PlayerProgram) Save(c chan<- datastore.Property) error {
 	if pp.ProgramKey == nil {
 		return errors.New("program required")
 	}
+	pp.Updated = time.Now()
 	program.Save(&pp.Program)
 	return datastore.SaveStruct(pp, c)
 }
@@ -216,6 +228,28 @@ func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 	return value, updated
 }
 
+func Login(c appengine.Context, cr Creation) (string, error) {
+	q := datastore.NewQuery("Player").Filter("Email =", cr.Email).Limit(1)
+	res := make([]Player, 1, 1)
+	keys, err := q.GetAll(c, &res)
+	if err != nil {
+		return "", err
+	}
+	if len(keys) < 1 {
+		return "", errors.New("No player found")
+	}
+	iplayer := res[0]
+	playerKey := keys[0]
+	if err := bcrypt.CompareHashAndPassword(iplayer.Pass, []byte(cr.Password)); err != nil {
+		return "", err
+	}
+	tokenString, err := utils.CreateTokenString(playerKey.Encode())
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+
 func KeyByID(c appengine.Context, id int64) (*datastore.Key, error) {
 	k := fmt.Sprintf("%d", id)
 	rk := new(datastore.Key)
@@ -248,6 +282,27 @@ func Get(c appengine.Context, playerStr string, player *Player) (*datastore.Key,
 	return playerKey, nil
 }
 
+func Tstatus(c appengine.Context, playerStr string, iplayer *Player) error {
+	trackerCh := make(chan event.Tracker)
+	go func() {
+		playerKey, err := datastore.DecodeKey(playerStr)
+		if err != nil {
+			c.Errorf("error decoding playerKey %s", err)
+		}
+		trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
+		tracker := new(event.Tracker)
+		if err := datastore.Get(c, trackerKey, tracker); err != nil {
+			c.Errorf("error retrieving tracker: %s", err)
+		}
+		trackerCh <- *tracker
+	}()
+	if err := Status(c, playerStr, iplayer); err != nil {
+		return err
+	}
+	iplayer.Tracker = <-trackerCh
+	return nil
+}
+
 func Status(c appengine.Context, playerStr string, iplayer *Player) error {
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
@@ -256,16 +311,7 @@ func Status(c appengine.Context, playerStr string, iplayer *Player) error {
 	if err := datastore.Get(c, playerKey, iplayer); err != nil {
 		return err
 	}
-	trackerCh := make(chan event.Tracker)
-	go func() {
-		trackerKey := datastore.NewKey(c, "Tracker", playerKey.StringID(), 0, nil)
-		tracker := new(event.Tracker)
-		if err := datastore.Get(c, trackerKey, tracker); err != nil {
-			c.Errorf("error retrieving tracker: %s", err)
-		}
-		trackerCh <- *tracker
-	}()
-	iplayer.Key = playerKey
+	iplayer.DbKey = playerKey
 	iplayer.Programs = make(map[int64]*PlayerProgramGroup)
 	iplayer.BandwidthUsage = 0
 	iplayer.Bandwidth = 0
@@ -283,7 +329,7 @@ func Status(c appengine.Context, playerStr string, iplayer *Player) error {
 		if pp.Amount == 0 {
 			continue
 		}
-		pp.Key = key
+		pp.DbKey = key
 		pp.Usage = pp.BandwidthUsage * float64(pp.Amount)
 		pp.Yield = pp.Bandwidth * pp.Amount
 		var group *PlayerProgramGroup
@@ -334,7 +380,6 @@ func Status(c appengine.Context, playerStr string, iplayer *Player) error {
 			cGroup.Power = false
 		}
 	}
-	iplayer.Tracker = <-trackerCh
 	return nil
 }
 
@@ -410,12 +455,15 @@ func deleteUniquePlayer(c appengine.Context, email, nick string) error {
 	return nil
 }
 
-func Create(c appengine.Context, nick, email string) (string, map[string]int, error) {
-	errmap, err := ValidPlayer(c, email, nick)
+func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
+	errmap, err := ValidPlayer(c, cr.Email, cr.Nick)
 	if err != nil {
 		return "", nil, err
 	} else if errmap["email"]+errmap["nick"] > 0 {
 		return "", errmap, nil
+	}
+	if len(cr.Password) < 8 {
+		return "", nil, errors.New("password needs a minimum of 8 characters")
 	}
 	keyName, err := guid.GenUUID()
 	if err != nil {
@@ -429,20 +477,29 @@ func Create(c appengine.Context, nick, email string) (string, map[string]int, er
 	trackerKey := datastore.NewKey(c, "Tracker", keyName, 0, nil)
 	tracker := new(event.Tracker)
 	player := NewPlayer()
-	player.Nick = nick
+	player.Nick = cr.Nick
 	player.Access = ADMIN
-	player.Email = email
+	player.Email = cr.Email
 	player.PlayerID = cnt
 	player.Status = LIVE
+	var errc error
+	player.Pass, errc = bcrypt.GenerateFromPassword([]byte(cr.Password), bcrypt.DefaultCost)
+	if errc != nil {
+		return "", nil, errc
+	}
 	storeKeys := []*datastore.Key{playerKey, trackerKey}
 	models := []interface{}{player, tracker}
 	if _, err = datastore.PutMulti(c, storeKeys, models); err != nil {
-		if uerr := deleteUniquePlayer(c, email, nick); uerr != nil {
+		if uerr := deleteUniquePlayer(c, cr.Email, cr.Nick); uerr != nil {
 			c.Errorf("error deleting unique property %s", uerr)
 		}
 		return "", nil, err
 	}
-	return playerKey.Encode(), nil, nil
+	tokenString, err := utils.CreateTokenString(playerKey.Encode())
+	if err != nil {
+		return "", nil, err
+	}
+	return tokenString, nil, nil
 }
 
 func Tracker(c appengine.Context, playerStr, clanStr string) (event.Tracker, error) {
@@ -472,7 +529,7 @@ func Tracker(c appengine.Context, playerStr, clanStr string) (event.Tracker, err
 }
 
 func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventList, error) {
-	events := make([]*event.Event, 20, 20)
+	events := make([]event.Event, 20, 20)
 	iplayer := new(Player)
 	playerKey, err := Get(c, playerStr, iplayer)
 	if err != nil {
@@ -506,7 +563,7 @@ func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventL
 		}
 		if tracker.EventCount > 0 {
 			tracker.EventCount = 0
-			if _, err := datastore.Put(c, trackerKey, tracker); err != nil {
+			if _, err := datastore.Put(c, trackerKey, &tracker); err != nil {
 				c.Errorf("error saving global tracker %s", err)
 			}
 		}
@@ -538,7 +595,7 @@ func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventL
 		if loc == event.GLOBAL && e.Player.Equal(playerKey) {
 			continue
 		}
-		events[ec] = &e
+		events[ec] = e
 		ec++
 	}
 	newCursor, err := it.Cursor()

@@ -137,7 +137,7 @@ func Ice(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
 			attackEvent.ProgramsLost = attackProgram.Amount
 			attackEvent.BwLost = attackProgram.BwLost
 			attackEvent.EventPrograms = append(attackEvent.EventPrograms, *attackProgram.EventProgram)
-			keys = append(keys, attackProgram.PlayerProgram.Key)
+			keys = append(keys, attackProgram.PlayerProgram.DbKey)
 			models = append(models, attackProgram.PlayerProgram)
 		}
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {

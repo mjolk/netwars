@@ -4,11 +4,11 @@ import (
 	"appengine"
 	"appengine/aetest"
 	//"appengine/datastore"
-	//"errors"
+	"errors"
 	//"fmt"
 	"mj0lk.be/netwars/clan"
 	"mj0lk.be/netwars/player"
-
+	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -20,12 +20,18 @@ const (
 	TESTTAG   = "tag"
 )
 
-func setupPlayer(c appengine.Context, nick, email string) (string, error) {
-	playerStr, _, err := player.Create(c, nick, email)
+func setupPlayer(c appengine.Context, nick string, email string) (string, error) {
+	cr := player.Creation{email, nick, "testpassword"}
+	tokenStr, usererr, err := player.Create(c, cr)
 	if err != nil {
 		return "", err
+
 	}
-	return playerStr, nil
+	if usererr != nil {
+		return "", errors.New("unexpected user error")
+	}
+	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	return playerKeyStr, nil
 }
 
 func TestCreateBoard(t *testing.T) {

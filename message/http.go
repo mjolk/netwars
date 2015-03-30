@@ -2,7 +2,6 @@ package message
 
 import (
 	"appengine"
-	"encoding/json"
 	"mj0lk.be/netwars/utils"
 	"net/http"
 )
@@ -10,7 +9,12 @@ import (
 func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request) {
 	message := new(Message)
 	c := appengine.NewContext(r)
-	json.NewDecoder(r.Body).Decode(message)
+	if err := utils.DecodeJsonBody(r, &message); err != nil {
+		res := utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res.JSONf(w)
+		return
+	}
+	message.Pkey = utils.Pkey(r)
 	if err := CreateOrUpdate(c, message); err != nil {
 		res := utils.JSONResult{Success: false, Error: err.Error()}
 		res.JSONf(w)
@@ -19,8 +23,8 @@ func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request) {
 
 func ListPublicBoards(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
-	pkey := r.FormValue("pkey")
-	cursor := r.FormValue("cursor")
+	pkey := utils.Pkey(r)
+	cursor := utils.Var(r, "cursor")
 	var res utils.JSONResult
 	boards, err := PublicBoards(c, pkey, cursor)
 	if err != nil {
@@ -33,8 +37,8 @@ func ListPublicBoards(w http.ResponseWriter, r *http.Request) {
 
 func ListClanBoards(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
-	pkey := r.FormValue("pkey")
-	cursor := r.FormValue("cursor")
+	pkey := utils.Pkey(r)
+	cursor := utils.Var(r, "cursor")
 	var res utils.JSONResult
 	boards, err := ClanBoards(c, pkey, cursor)
 	if err != nil {
@@ -55,11 +59,17 @@ func ListMessages(w http.ResponseWriter, r *http.Request) {
 
 func list(w http.ResponseWriter, r *http.Request, tpe string) {
 	c := appengine.NewContext(r)
-	pkey := r.FormValue("pkey")
-	tkey := r.FormValue("tkey")
-	ckey := r.FormValue("ckey")
+	pkey := utils.Pkey(r)
+	var key string
+	switch tpe {
+	case "threads":
+		key = utils.Var(r, "bkey")
+	case "messages":
+		key = utils.Var(r, "tkey")
+	}
+	ckey := utils.Var(r, "cursor")
 	var res utils.JSONResult
-	messages, err := Messages(c, tpe, pkey, tkey, ckey)
+	messages, err := Messages(c, tpe, pkey, key, ckey)
 	if err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
