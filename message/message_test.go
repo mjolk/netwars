@@ -46,14 +46,13 @@ func TestCreateBoard(t *testing.T) {
 	}
 
 	message := Message{
-		Pkey:       playerStr,
 		Subject:    "subject",
 		Content:    "content",
 		Scope:      1,
 		AccessName: "Public",
 	}
 
-	if err := CreateOrUpdate(c, &message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating board %s", err)
 	}
 
@@ -81,14 +80,13 @@ func TestCreateClanBoard(t *testing.T) {
 	}
 
 	message := Message{
-		Pkey:       playerStr,
 		Subject:    "subject",
 		Content:    "content",
 		Scope:      2,
 		AccessName: "Public",
 	}
 
-	if err := CreateOrUpdate(c, &message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating board %s", err)
 	}
 
@@ -112,15 +110,14 @@ func TestCreateThread(t *testing.T) {
 		t.Fatalf("Error setting up player")
 	}
 	//create board
-	message := &Message{
-		Pkey:       playerStr,
+	message := Message{
 		Subject:    "subject",
 		Content:    "content",
 		Scope:      1,
 		AccessName: "Public",
 	}
 
-	if err := CreateOrUpdate(c, message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating board %s", err)
 	}
 
@@ -135,7 +132,7 @@ func TestCreateThread(t *testing.T) {
 	message.Content = "threadcontent"
 	message.Subject = "threadsubject"
 
-	if err := CreateOrUpdate(c, message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating thread %s", err)
 	}
 
@@ -160,15 +157,14 @@ func TestCreateMessage(t *testing.T) {
 		t.Fatalf("Error setting up player")
 	}
 
-	message := &Message{
-		Pkey:       playerStr,
+	message := Message{
 		Subject:    "subject",
 		Content:    "content",
 		Scope:      1,
 		AccessName: "Public",
 	}
 
-	if err := CreateOrUpdate(c, message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating board %s", err)
 	}
 
@@ -183,7 +179,7 @@ func TestCreateMessage(t *testing.T) {
 	message.Content = "threadcontent"
 	message.Subject = "threadsubject"
 
-	if err := CreateOrUpdate(c, message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating thread %s", err)
 	}
 
@@ -201,7 +197,7 @@ func TestCreateMessage(t *testing.T) {
 	message.Content = "messagecontent"
 	message.Subject = "messagesubject"
 
-	if err := CreateOrUpdate(c, message); err != nil {
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		t.Fatalf("\nError creating message %s", err)
 	}
 

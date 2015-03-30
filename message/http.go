@@ -7,15 +7,15 @@ import (
 )
 
 func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request) {
-	message := new(Message)
+	message := Message{}
 	c := appengine.NewContext(r)
 	if err := utils.DecodeJsonBody(r, &message); err != nil {
 		res := utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
-	message.Pkey = utils.Pkey(r)
-	if err := CreateOrUpdate(c, message); err != nil {
+	playerStr := utils.Pkey(r)
+	if err := CreateOrUpdate(c, playerStr, message); err != nil {
 		res := utils.JSONResult{Success: false, Error: err.Error()}
 		res.JSONf(w)
 	}

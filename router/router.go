@@ -170,7 +170,7 @@ var routes = map[string]Routes{
 			utils.JSONResult{Result: clan.Clan{}},
 			true,
 		},
-		Route{
+		Route{ //TODO add public clan lookup, route does nothing for now
 			"clanstatuspublic",
 			[]string{"/status/{clankey}"},
 			"GET",

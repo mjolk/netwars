@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+//TODO add delete message/board/thread
 const (
 	PUBLIC  int64 = 1 << iota
 	CLAN    int64 = 1 << iota
@@ -38,7 +39,6 @@ type MessageList struct {
 
 type Message struct {
 	DbKey       *datastore.Key `datastore:"-" json:"-"`
-	Pkey        string         `json:"-" datastore:"-"`
 	EncodedKey  string         `datastore:"-" json:"message_key"`
 	PID         int64          `json:"pid" datastore:"-"`  //personal message recipient
 	Bkey        string         `datastore:"-" json:"bkey"` // board id
@@ -72,12 +72,9 @@ func newMessageID(c appengine.Context, cntCh chan<- int64) {
 	cntCh <- cnt
 }
 
-func CreateOrUpdate(c appengine.Context, message *Message) error {
-	if len(message.Pkey) == 0 {
-		return errors.New("No player key provided")
-	}
+func CreateOrUpdate(c appengine.Context, playerKeyStr string, message Message) error {
 	iplayer := new(player.Player)
-	playerKey, err := player.Get(c, message.Pkey, iplayer)
+	playerKey, err := player.Get(c, playerKeyStr, iplayer)
 	if err != nil {
 		return err
 	}

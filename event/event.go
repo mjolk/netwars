@@ -37,8 +37,8 @@ var (
 		"OUT": 1,
 	}
 
-	templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
-	//templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl"))//testing
+	//templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
+	templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl")) //testing
 )
 
 //CLAN parent: clan  key: playerkey

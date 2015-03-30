@@ -523,6 +523,7 @@ func Join(c appengine.Context, playerStr, inviteStr string) error {
 	}, options)
 }
 
+//TODO add email invite logic
 func EmailInvite(c appengine.Context, clanStr, playerStr, email string) error {
 	return nil
 }
