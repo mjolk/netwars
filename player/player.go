@@ -59,6 +59,11 @@ type Creation struct {
 	Password string `json:"pwd"`
 }
 
+type Authentication struct {
+	Email    string `json:"email"`
+	Password string `json:"pwd"`
+}
+
 type Unique struct {
 	Created time.Time
 }
@@ -228,7 +233,7 @@ func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 	return value, updated
 }
 
-func Login(c appengine.Context, cr Creation) (string, error) {
+func Login(c appengine.Context, cr Authentication) (string, error) {
 	q := datastore.NewQuery("Player").Filter("Email =", cr.Email).Limit(1)
 	res := make([]Player, 1, 1)
 	keys, err := q.GetAll(c, &res)

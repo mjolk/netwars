@@ -25,10 +25,20 @@ type Route struct {
 
 type Routes []Route
 
-var jsonheader = []string{"Accept", "application/json"}
+var jsonheader = []string{"Accept", "application/json; charset=UTF-8"}
 
 var routes = map[string]Routes{
 	"/players": Routes{
+		Route{
+			"login",
+			[]string{"/login"},
+			"POST",
+			jsonheader,
+			player.AuthenticatePlayer,
+			player.Authentication{"email", "password"},
+			utils.JSONResult{Result: "token"},
+			false,
+		},
 		Route{
 			"createplayer",
 			[]string{"/"},

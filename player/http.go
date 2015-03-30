@@ -91,6 +91,24 @@ func AllocatePrograms(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func AuthenticatePlayer(w http.ResponseWriter, r *http.Request) {
+	al := Authentication{}
+	var res utils.JSONResult
+	if err := utils.DecodeJsonBody(r, &al); err != nil {
+		res = utils.JSONResult{Success: false, EntityError: false, Error: err.Error()}
+		res.JSONf(w)
+		return
+	}
+	c := appengine.NewContext(r)
+	if token, err := Login(c, al); err != nil {
+		c.Debugf("error login %s \n", err)
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	} else {
+		res = utils.JSONResult{Success: true, Result: token, Error: err.Error()}
+	}
+	res.JSONf(w)
+}
+
 func DeallocatePrograms(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	al := Allocation{}
