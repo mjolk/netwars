@@ -26,7 +26,12 @@ var (
 	NoAccess = "No Access"
 )
 
-const JWTSECRET = "blalxdjbvvszkcyh56^b-=9if%=h1e%$ld=@4(js50t!$ld*a@5vcu(=2d0jxvxkbgtnhiuk"
+type contextKey int
+
+const (
+	JWTSECRET            = "blalxdjbvvszkcyh56^b-=9if%=h1e%$ld=@4(js50t!$ld*a@5vcu(=2d0jxvxkbgtnhiuk"
+	keyCtx    contextKey = iota
+)
 
 type JSONResult struct {
 	Success     bool        `json:"-"`
@@ -36,15 +41,21 @@ type JSONResult struct {
 }
 
 func (r *JSONResult) JSONf(w http.ResponseWriter) {
-	if err := json.NewEncoder(w).Encode(r); err != nil {
-		panic(err)
-	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if !r.Success {
-		w.WriteHeader(http.StatusInternalServerError)
 		if r.EntityError {
 			w.WriteHeader(422)
+		} else {
+			switch r.Error {
+			case NoAccess:
+				w.WriteHeader(http.StatusUnauthorized)
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		}
+	}
+	if err := json.NewEncoder(w).Encode(r); err != nil {
+		panic(err)
 	}
 }
 
@@ -75,8 +86,8 @@ func DecodeJsonBody(r *http.Request, v interface{}) error {
 }
 
 func Pkey(r *http.Request) string {
-	vars := mux.Vars(r)
-	return vars["pkey"]
+	pkey := context.Get(r, keyCtx)
+	return pkey.(string)
 }
 
 func Var(r *http.Request, vr string) string {
@@ -104,35 +115,29 @@ func ValidateToken(tokenString string) (string, error) {
 	return playerStr, nil
 }
 
+func noAccess(w http.ResponseWriter) {
+	res := JSONResult{Success: false, Error: NoAccess}
+	res.JSONf(w)
+}
+
 func Validator(inner http.Handler) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var res JSONResult
 		if ah := r.Header.Get("Authorization"); ah != "" {
 			// Should be a netwars token
 			if len(ah) > 7 && strings.ToUpper(ah[:7]) == "N3TWARS" {
 				playerStr, err := ValidateToken(ah[7:])
 				if err != nil {
-					if rv := context.Get(r, 0); rv != nil {
-						rvmap := rv.(map[string]string)
-						rvmap["pkey"] = playerStr
-						context.Set(r, 0, rv)
-					} else {
-						rv := make(map[string]string)
-						rv["pkey"] = playerStr
-						context.Set(r, 0, rv)
-					}
-					inner.ServeHTTP(w, r)
+					noAccess(w)
 				} else {
-					res = JSONResult{Success: false, Error: NoAccess}
+					context.Set(r, keyCtx, playerStr)
+					inner.ServeHTTP(w, r)
 				}
-
 			} else {
-				res = JSONResult{Success: false, Error: NoAccess}
+				noAccess(w)
 			}
 		} else {
-			res = JSONResult{Success: false, Error: NoAccess}
+			noAccess(w)
 		}
-		res.JSONf(w)
 	})
 }
 

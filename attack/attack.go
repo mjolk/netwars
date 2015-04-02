@@ -486,8 +486,8 @@ type ProbResult struct {
 }
 
 func buildProbability(actPct, actVpct float64) []ProbResult {
-	r := int(actPct / 10)
-	v := int(actVpct / 10)
+	r := int(math.Ceil(actPct / 10))
+	v := int(math.Ceil(actVpct / 10))
 	rv := make([]ProbResult, 10, 10)
 	var c int
 	for c = 0; c < 10; c++ {

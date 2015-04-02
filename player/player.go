@@ -534,6 +534,7 @@ func Tracker(c appengine.Context, playerStr, clanStr string) (event.Tracker, err
 }
 
 func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventList, error) {
+	c.Debugf("events for type %s", loc)
 	events := make([]event.Event, 20, 20)
 	iplayer := new(Player)
 	playerKey, err := Get(c, playerStr, iplayer)

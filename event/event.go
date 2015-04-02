@@ -37,8 +37,8 @@ var (
 		"OUT": 1,
 	}
 
-	//templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
-	templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl")) //testing
+	templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
+	//templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl")) //testing
 )
 
 //CLAN parent: clan  key: playerkey
@@ -104,7 +104,7 @@ type Event struct {
 	EventPrograms     []EventProgram `json:"active_programs" datastore:"-"`
 	Eprogs            []byte         `json:"-" datastore:",noindex"`
 	VDamageReceived   int64          `datastore:",noindex" json:"-"`
-	GUID              string         `datastore:"-"`
+	GUID              string         `datastore:"-" json:"-"`
 }
 
 type PlayerNotification struct {
@@ -283,12 +283,12 @@ func NewEventID(c appengine.Context, cntCh chan<- int64) {
 	cntCh <- cnt
 }
 
-func NotificationsForType(c appengine.Context, player *datastore.Key, eventType string) ([]*PlayerNotification, error) {
-	k := fmt.Sprintf("%s_Notifications", player.StringID())
+func NotificationsForType(c appengine.Context, playerKey *datastore.Key, eventType string) ([]*PlayerNotification, error) {
+	k := fmt.Sprintf("%s_Notifications", playerKey.StringID())
 	notif := make([]*PlayerNotification, 10)
 	cnt := 0
 	if !cache.Get(c, k, notif) {
-		q := datastore.NewQuery("PlayerNotification").Filter("Player =", player)
+		q := datastore.NewQuery("PlayerNotification").Filter("Player =", playerKey)
 		for t := q.Run(c); ; {
 			var pn PlayerNotification
 			_, err := t.Next(&pn)
@@ -345,16 +345,16 @@ func incrementTracker(c appengine.Context, pl string) error {
 	return nil
 }
 
-func (e Event) NotifyPlayer(c appengine.Context, notifCh chan<- *taskqueue.Task, player *datastore.Key) {
+func (e Event) NotifyPlayer(c appengine.Context, notifCh chan<- *taskqueue.Task, key *datastore.Key) {
 	c.Debugf("notify payer --------\n")
 	localTrackerCh := make(chan int)
 	clanNotify := false
-	if player != nil {
+	if key != nil {
 		clanNotify = true
 	}
 	playerKey := e.Player
 	if clanNotify {
-		playerKey = player
+		playerKey = key
 	} else {
 		go func() {
 			if err := incrementTracker(c, playerKey.StringID()); err != nil {
@@ -466,5 +466,4 @@ func (e Event) Notify(c appengine.Context, readyCh chan<- int) {
 		c.Errorf("\n errors adding tasks : %s", err)
 	}*/
 	readyCh <- 0
-
 }

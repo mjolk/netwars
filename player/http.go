@@ -34,7 +34,6 @@ func CreatePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enckey, errmap, err := Create(c, cr)
-	c.Debugf("%s", errmap)
 	if err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else if len(errmap) > 0 {
@@ -63,10 +62,10 @@ func GetPlayerList(w http.ResponseWriter, r *http.Request) {
 
 func StatusPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
-	playerstr := utils.Pkey(r)
+	playerStr := utils.Pkey(r)
 	iplayer := new(Player)
 	var res utils.JSONResult
-	if err := Tstatus(c, playerstr, iplayer); err != nil {
+	if err := Tstatus(c, playerStr, iplayer); err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
 		res = utils.JSONResult{Success: true, Result: iplayer}
@@ -178,13 +177,25 @@ func PlayerTracker(w http.ResponseWriter, r *http.Request) {
 	res.JSONf(w)
 }
 
-func EventList(w http.ResponseWriter, r *http.Request) {
+func LocalEvents(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	playerKey := utils.Pkey(r)
 	cursor := utils.Var(r, "cursor")
-	loc := utils.Var(r, "loc")
 	var res utils.JSONResult
-	events, err := Events(c, playerKey, loc, cursor)
+	events, err := Events(c, playerKey, "Player", cursor)
+	if err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	}
+	res = utils.JSONResult{Success: true, Result: events}
+	res.JSONf(w)
+}
+
+func GlobalEvents(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	playerKey := utils.Pkey(r)
+	cursor := utils.Var(r, "cursor")
+	var res utils.JSONResult
+	events, err := Events(c, playerKey, "Clan", cursor)
 	if err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	}

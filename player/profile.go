@@ -6,7 +6,6 @@ import (
 	"appengine/datastore"
 	"appengine/image"
 	"fmt"
-	"strconv"
 	"time"
 )
 
@@ -108,20 +107,16 @@ func (p *Profile) Save(c chan<- datastore.Property) error {
 }
 
 func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, error) {
-	playerKey, err := datastore.DecodeKey(pkeyStr)
-	attackRange, err := strconv.ParseBool(rangeStr)
+	iplayer := new(Player)
+	playerKey, err := Get(c, pkeyStr, iplayer)
 	if err != nil {
 		return PlayerList{}, err
 	}
-	profiles := make([]Profile, 0, LIMIT)
+	profiles := make([]Profile, LIMIT, LIMIT)
 	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
 		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
-	if attackRange {
-		player := new(Player)
-		if err := datastore.Get(c, playerKey, player); err != nil {
-			return PlayerList{}, err
-		}
-		rangeLo, rangeHi := player.Range()
+	if len(rangeStr) > 0 {
+		rangeLo, rangeHi := iplayer.Range()
 		q = q.Filter("BandwidthUsage >", rangeLo).
 			Filter("BandwidthUsage <", rangeHi)
 	}
@@ -133,17 +128,22 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, er
 		q = q.Start(cur)
 	}
 	t := q.Run(c)
+	var cnt int
 	for {
 		var profile Profile
-		_, err := t.Next(&profile)
+		key, err := t.Next(&profile)
 		if err == datastore.Done {
 			break
 		}
 		if err != nil {
 			return PlayerList{}, err
 		}
-		profiles = append(profiles, profile)
+		if !playerKey.Equal(key) {
+			profiles[cnt] = profile
+			cnt++
+		}
 	}
+	profiles = profiles[:cnt]
 	newCur, err := t.Cursor()
 	if err != nil {
 		return PlayerList{}, err
@@ -152,17 +152,13 @@ func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, er
 		Cursor:  newCur.String(),
 		Players: profiles,
 	}
-	c.Debugf("players list : %+v \n", list)
 	return list, nil
 }
 
 func UpdateProfile(c appengine.Context, playerStr string, update ProfileUpdate) error {
-	playerKey, err := datastore.DecodeKey(playerStr)
+	iplayer := new(Player)
+	playerKey, err := Get(c, playerStr, iplayer)
 	if err != nil {
-		return err
-	}
-	player := new(Player)
-	if err := datastore.Get(c, playerKey, player); err != nil {
 		return err
 	}
 	if len(update.Birthday) > 0 {
@@ -170,14 +166,14 @@ func UpdateProfile(c appengine.Context, playerStr string, update ProfileUpdate) 
 		if err != nil {
 			return err
 		}
-		player.Birthday = bd
+		iplayer.Birthday = bd
 	}
-	player.Name = update.Name
-	player.Country = update.Country
-	player.Language = update.Language
-	player.Address = update.Address
-	player.Signature = update.Signature
-	if _, err := datastore.Put(c, playerKey, player); err != nil {
+	iplayer.Name = update.Name
+	iplayer.Country = update.Country
+	iplayer.Language = update.Language
+	iplayer.Address = update.Address
+	iplayer.Signature = update.Signature
+	if _, err := datastore.Put(c, playerKey, iplayer); err != nil {
 		return err
 	}
 	return nil
@@ -185,16 +181,13 @@ func UpdateProfile(c appengine.Context, playerStr string, update ProfileUpdate) 
 
 // TODO check last update of image to avoid too much changing and uploading
 func UpdateAvatar(c appengine.Context, playerStr string, img *blobstore.BlobInfo) error {
-	playerKey, err := datastore.DecodeKey(playerStr)
+	iplayer := new(Player)
+	playerKey, err := Get(c, playerStr, iplayer)
 	if err != nil {
 		return err
 	}
-	player := new(Player)
-	if err := datastore.Get(c, playerKey, player); err != nil {
-		return err
-	}
-	if len(player.Avatar) > 0 {
-		if err := image.DeleteServingURL(c, player.AvatarKey); err != nil {
+	if len(iplayer.Avatar) > 0 {
+		if err := image.DeleteServingURL(c, iplayer.AvatarKey); err != nil {
 			return err
 		}
 	}
@@ -202,9 +195,9 @@ func UpdateAvatar(c appengine.Context, playerStr string, img *blobstore.BlobInfo
 	if err != nil {
 		return err
 	}
-	player.AvatarKey = img.BlobKey
-	player.Avatar = imgURL.String()
-	if _, err := datastore.Put(c, playerKey, player); err != nil {
+	iplayer.AvatarKey = img.BlobKey
+	iplayer.Avatar = imgURL.String()
+	if _, err := datastore.Put(c, playerKey, iplayer); err != nil {
 		return err
 	}
 	return nil
