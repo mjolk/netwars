@@ -37,8 +37,8 @@ var (
 		"OUT": 1,
 	}
 
-	templates = template.Must(template.ParseFiles("Invite_email.tmpl"))
-	//templates = template.Must(template.ParseFiles("../event/Invite_email.tmpl")) //testing
+	invite_tmpl = template.Must(template.ParseFiles("email_templates/Invite_email.tmpl"))
+	//invite_tmpl = template.Must(template.ParseFiles("../event/Invite_email.tmpl")) //testing
 )
 
 //CLAN parent: clan  key: playerkey
@@ -51,7 +51,7 @@ type Tracker struct {
 type EventProgram struct {
 	Name             string         `json:"name"`
 	Source           string         `json:"source"`
-	Amount           int64          `json: "amount"`
+	Amount           int64          `json:"amount"`
 	Owned            bool           `json:"owned"`
 	TypeName         string         `json:"type_name"`
 	AmountUsed       int64          `json:"amount_used" datastore:",noindex`
@@ -145,7 +145,7 @@ func NewPullTask(notif interface{}, id, path string) (*taskqueue.Task, error) {
 func (e Event) CreateEmail(email string) (*taskqueue.Task, error) {
 	notif := Email{}
 	buf := new(bytes.Buffer)
-	err := templates.ExecuteTemplate(buf, e.Action+"_email.tmpl", e)
+	err := invite_tmpl.ExecuteTemplate(buf, e.Action+"_email.tmpl", e)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ func Send(c appengine.Context, em []*Event, e EventFunc) error {
 
 type EventList struct {
 	Events []Event `json:"events"`
-	Cursor string  `json:"c"`
+	Cursor string  `json:"cursor"`
 }
 
 func NewEventID(c appengine.Context, cntCh chan<- int64) {

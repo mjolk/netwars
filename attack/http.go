@@ -9,6 +9,7 @@ import (
 func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	cfg := AttackCfg{}
+	playerStr := utils.Pkey(r)
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &cfg); err != nil {
 		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
@@ -17,11 +18,11 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 		var err error
 		switch cfg.AttackType {
 		case BAL:
-			response, err = Attack(c, cfg)
+			response, err = Attack(c, playerStr, cfg)
 		case ICE:
-			response, err = Ice(c, cfg)
+			response, err = Ice(c, playerStr, cfg)
 		case INT:
-			response, err = Spy(c, cfg)
+			response, err = Spy(c, playerStr, cfg)
 		}
 		if err != nil {
 			res = utils.JSONResult{Success: false, Error: err.Error()}

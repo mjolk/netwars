@@ -52,7 +52,6 @@ type ActiveProgram struct {
 
 type AttackCfg struct {
 	AttackType     int64           `json:"attack_type"`
-	Pkey           string          `json:"pkey"`
 	Target         int64           `json:"target"`
 	ActivePrograms []ActiveProgram `json:"attack_programs"`
 }
@@ -73,9 +72,9 @@ type AttackWindow struct {
 }
 
 type AttackEvent struct {
-	AttackType int64
+	AttackType int64 `json:"attack_type"`
 	*event.Event
-	Connection *datastore.Key
+	Connection *datastore.Key `json:"-"`
 }
 
 type AttackEventProgram struct {
@@ -356,21 +355,13 @@ func NewAttackEvent(t int64, dir int64, player, target *player.Player) *AttackEv
 	return ievent
 }
 
-func (cfg AttackCfg) Keys(c appengine.Context) (*datastore.Key, *datastore.Key, error) {
-	attackerKey, err := datastore.DecodeKey(cfg.Pkey)
+func Attack(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, error) {
+	c.Debugf("running attack  cfg: %+v<<<\n", cfg)
+	attackerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
-		return nil, nil, err
+		return AttackEvent{}, err
 	}
 	defenderKey, err := player.KeyByID(c, cfg.Target)
-	if err != nil {
-		return nil, nil, err
-	}
-	return attackerKey, defenderKey, nil
-}
-
-func Attack(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
-	c.Debugf("running attack  cfg: %+v<<<\n", cfg)
-	attackerKey, defenderKey, err := cfg.Keys(c)
 	if err != nil {
 		return AttackEvent{}, err
 	}
@@ -387,7 +378,7 @@ func Attack(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
 			}
 			playerStCh <- 0
 		}()
-		if err := player.Status(c, cfg.Pkey, attacker); err != nil {
+		if err := player.Status(c, playerStr, attacker); err != nil {
 			return err
 		}
 		<-playerStCh

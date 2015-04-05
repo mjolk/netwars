@@ -229,7 +229,7 @@ func TestStatus(t *testing.T) {
 	}
 	clanGuid, _, err := Create(c, inviterStr, CLAN1, "lol")
 	if err != nil {
-		t.Fatalf("\nError creating clan %s", err)
+		t.Fatalf("\nError creating clan %s, %s", err, clanGuid)
 	}
 	inviteeStr, err := setupPlayer(c, TESTNICK2, TESTEMAIL2)
 	if err != nil {
@@ -243,8 +243,8 @@ func TestStatus(t *testing.T) {
 	if err := datastore.Get(c, inviteePlayerKey, invitedPlayer); err != nil {
 		t.Fatalf("\nError getting player", err)
 	}
-	clanKey := datastore.NewKey(c, "Clan", clanGuid, 0, nil)
-	clanStr := clanKey.Encode()
+	//clanKey := datastore.NewKey(c, "Clan", clanGuid, 0, nil)
+	//clanStr := clanKey.Encode()
 	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
@@ -256,7 +256,7 @@ func TestStatus(t *testing.T) {
 	}
 	time.Sleep(1 * time.Second)
 	clan := new(Clan)
-	if err := Status(c, clanStr, clan); err != nil {
+	if err := Status(c, inviterStr, clan); err != nil {
 		t.Fatalf("\n error status clan %s", err)
 	}
 
@@ -265,7 +265,7 @@ func TestStatus(t *testing.T) {
 		t.Fatalf("\n error leaving clan %s", err)
 	}
 	time.Sleep(1 * time.Second)
-	if err := Status(c, clanStr, clan); err != nil {
+	if err := Status(c, inviterStr, clan); err != nil {
 		t.Fatalf("\n error status clan %s", err)
 	}
 	t.Logf("status clan : %+v", clan)
@@ -546,5 +546,52 @@ func TestUpdateMessage(t *testing.T) {
 	}
 
 	t.Logf("updated clanmessage : %s", team.Message)
+
+}
+
+func TestPublicStatus(t *testing.T) {
+	c, err := aetest.NewContext(nil)
+	if err != nil {
+		t.Fatalf("NewContext: %v", err)
+	}
+	defer c.Close()
+	playerStr, err := setupPlayer(c, TESTNICK1, TESTEMAIL1)
+	if err != nil {
+		t.Fatalf("Error setting up player")
+	}
+	clanGuid, _, err := Create(c, playerStr, CLAN1, "lol")
+	if err != nil {
+		t.Fatalf("\nError creating clan %s", err)
+	}
+	time.Sleep(1 * time.Second)
+	clanKey := datastore.NewKey(c, "Clan", clanGuid, 0, nil)
+	clanStr := clanKey.Encode()
+	clan := new(PublicClan)
+	if err := PublicStatus(c, clanStr, "1", clan); err != nil {
+		t.Fatalf("\n error status clan %s", err)
+	}
+	t.Logf("status clan : %+v \n\n", clan)
+}
+
+func TestClanList(t *testing.T) {
+	c, err := aetest.NewContext(nil)
+	if err != nil {
+		t.Fatalf("NewContext: %v", err)
+	}
+	defer c.Close()
+	playerStr, err := setupPlayer(c, TESTNICK1, TESTEMAIL1)
+	if err != nil {
+		t.Fatalf("Error setting up player")
+	}
+	clanGuid, _, err := Create(c, playerStr, CLAN1, "lol")
+	if err != nil {
+		t.Fatalf("\nError creating clan %s, guid %s", err, clanGuid)
+	}
+	time.Sleep(1 * time.Second)
+	list, err := List(c, playerStr, "false", "")
+	if err != nil {
+		t.Fatalf("error getting public player list: %s", err)
+	}
+	t.Logf("list retrieved : %+v \n", list)
 
 }

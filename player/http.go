@@ -49,7 +49,7 @@ func GetPlayerList(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	cur := utils.Var(r, "cursor")
 	playerKey := utils.Pkey(r)
-	attackRange := utils.Var(r, "range")
+	attackRange := utils.Var(r, "rangebool")
 	list, err := List(c, playerKey, attackRange, cur)
 	var res utils.JSONResult
 	if err != nil {
@@ -66,6 +66,21 @@ func StatusPlayer(w http.ResponseWriter, r *http.Request) {
 	iplayer := new(Player)
 	var res utils.JSONResult
 	if err := Tstatus(c, playerStr, iplayer); err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	} else {
+		res = utils.JSONResult{Success: true, Result: iplayer}
+	}
+	res.JSONf(w)
+}
+
+func PublicStatusPlayer(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	playerStr := utils.Pkey(r)
+	playerIdStr := utils.Var(r, "playerid")
+	iplayer := new(PublicPlayer)
+	err := Public(c, playerStr, playerIdStr, iplayer)
+	var res utils.JSONResult
+	if err != nil {
 		res = utils.JSONResult{Success: false, Error: err.Error()}
 	} else {
 		res = utils.JSONResult{Success: true, Result: iplayer}

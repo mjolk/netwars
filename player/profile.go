@@ -6,6 +6,9 @@ import (
 	"appengine/datastore"
 	"appengine/image"
 	"fmt"
+	"mj0lk.be/netwars/cache"
+	"mj0lk.be/netwars/event"
+	"strconv"
 	"time"
 )
 
@@ -50,6 +53,74 @@ var PlayerType = map[string]int64{
 	"Administrator":     ADMIN,
 }
 
+type PublicPlayer struct {
+	EncodedKey       string                        `datastore:"-" json:"key"`
+	DbKey            *datastore.Key                `datastore:"-" json:"-"`
+	Cps              int64                         `json:"-"`
+	Aps              int64                         `json:"aps"`
+	EncodedClan      string                        `datastore:"-" json:"clan_member"`
+	ClanKey          *datastore.Key                `json:"-"`
+	Cycles           int64                         `datastore:"-" json:"-"`
+	Memory           int64                         `datastore:"-" json:"-"`
+	ActiveMemory     int64                         `datastore:"-" json:"-"`
+	CyclesUpdated    time.Time                     `datastore:"-" json:"-"`
+	MemUpdated       time.Time                     `datastore:"-" json:"-"`
+	ActiveMemUpdated time.Time                     `datastore:"-" json:"-"`
+	Scycles          string                        `datastore:",noindex" json:"-"`
+	Smem             string                        `datastore:",noindex" json:"-"`
+	SactiveMem       string                        `datastore:",noindex" json:"-"`
+	Bandwidth        int64                         `json:"-"`
+	BandwidthUsage   float64                       `json:"bandwidth_usage"`
+	Updated          time.Time                     `json:"-"`
+	Created          time.Time                     `json:"-"`
+	Email            string                        `json:"-"`
+	Nick             string                        `json:"nick"`
+	Name             string                        `json:"-"`
+	Address          string                        `json:"-"`
+	Signature        string                        `json:"-"`
+	Birthday         time.Time                     `json:"-"`
+	AvatarKey        appengine.BlobKey             `json:"-"`
+	Avatar           string                        `json:"avatar"`
+	AvatarThumb      string                        `datastore:"-" json:"avatar_thumb"`
+	PlayerID         int64                         `json:"player_id"`
+	Status           int64                         `json:"-"`
+	StatusName       string                        `json:"status" datastore:"-"`
+	AccessName       string                        `json:"-" datastore:"-"`
+	Clan             string                        `json:"clan" datastore:"-"`
+	ClanTag          string                        `json:"clan_tag"`
+	MemberType       int64                         `json:"-"`
+	Member           string                        `json:"member_type" datastore:"-"`
+	Country          string                        `json:"-"`
+	Language         string                        `json:"-"`
+	Access           int64                         `json:"-"`
+	Verified         bool                          `json:"-" datastore:",noindex"`
+	DeviceID         string                        `json:"-" datastore:",noindex"`
+	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
+	PlayerPrograms   []*PlayerProgramGroup         `json:"-" datastore:"-"`
+	Tracker          event.Tracker                 `json:"-" datastore:"-"`
+	Pass             []byte                        `json:"-" datastore:"-"`
+}
+
+func (p *PublicPlayer) Load(c <-chan datastore.Property) error {
+	if err := datastore.LoadStruct(p, c); err != nil {
+		return err
+	}
+	if len(p.Avatar) > 0 {
+		p.AvatarThumb = fmt.Sprintf("%s=s%d", p.Avatar, THUMBSIZE)
+	}
+	if len(p.ClanTag) > 0 {
+		p.Nick = fmt.Sprintf("<%s> %s", p.ClanTag, p.Nick)
+	}
+	p.Member = MemberName[p.MemberType]
+	p.AccessName = PlayerTypeName[p.Access]
+	p.StatusName = PlayerStatusName[p.Status]
+	return nil
+}
+
+func (p *PublicPlayer) Save(c chan<- datastore.Property) error {
+	return datastore.SaveStruct(p, c)
+}
+
 type Profile struct {
 	Nick           string  `json:"nick"`
 	BandwidthUsage float64 `json:"bandwidth_usage"`
@@ -73,7 +144,7 @@ type ProfileUpdate struct {
 }
 
 type PlayerList struct {
-	Cursor  string    `json:"c"`
+	Cursor  string    `json:"cursor"`
 	Players []Profile `json:"players"`
 }
 
@@ -106,20 +177,56 @@ func (p *Profile) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(p, c)
 }
 
+func GetPublic(c appengine.Context, playerStr string, player *PublicPlayer) (*datastore.Key, error) {
+	playerKey, err := datastore.DecodeKey(playerStr)
+	if err != nil {
+		return nil, err
+	}
+	if !cache.Get(c, playerKey.StringID(), player) {
+		if err := datastore.Get(c, playerKey, player); err != nil {
+			return nil, err
+		}
+		cache.Add(c, playerKey.StringID(), player)
+	}
+	return playerKey, nil
+}
+
+func Public(c appengine.Context, playerStr string, playerIdStr string, iplayer *PublicPlayer) error {
+	playerId, err := strconv.ParseInt(playerIdStr, 10, 64)
+	if err != nil {
+		return err
+	}
+	playerKey, err := KeyByID(c, playerId)
+	if err != nil {
+		return err
+	}
+	if _, err := GetPublic(c, playerKey.Encode(), iplayer); err != nil {
+		return err
+	}
+	return nil
+
+}
+
 func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, error) {
+	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
+		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	iplayer := new(Player)
 	playerKey, err := Get(c, pkeyStr, iplayer)
 	if err != nil {
 		return PlayerList{}, err
 	}
-	profiles := make([]Profile, LIMIT, LIMIT)
-	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
-		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	if len(rangeStr) > 0 {
-		rangeLo, rangeHi := iplayer.Range()
-		q = q.Filter("BandwidthUsage >", rangeLo).
-			Filter("BandwidthUsage <", rangeHi)
+		rangeBool, err := strconv.ParseBool(rangeStr)
+		if err != nil {
+			return PlayerList{}, err
+		}
+		if rangeBool {
+			rangeLo, rangeHi := iplayer.Range()
+			q = q.Filter("BandwidthUsage >", rangeLo).
+				Filter("BandwidthUsage <", rangeHi)
+		}
 	}
+	profiles := make([]Profile, LIMIT, LIMIT)
 	if len(cursor) > 0 {
 		cur, err := datastore.DecodeCursor(cursor)
 		if err != nil {

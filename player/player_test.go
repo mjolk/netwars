@@ -262,3 +262,21 @@ func TestProfileList(t *testing.T) {
 	t.Logf("list retrieved : %+v \n", list)
 
 }
+
+func TestPublicStatus(t *testing.T) {
+	c, err := aetest.NewContext(nil)
+	if err != nil {
+		t.Fatalf("NewContext: %v", err)
+	}
+	defer c.Close()
+	playerKeyStr, err := setupPlayer(c)
+	if err != nil {
+		t.Fatalf("setup player error: %s", err)
+	}
+	time.Sleep(1 * time.Second)
+	iplayer := new(PublicPlayer)
+	if err := Public(c, playerKeyStr, "1", iplayer); err != nil {
+		t.Fatalf(" status err : %s", err)
+	}
+	t.Logf("player retrieved: %+v \n", iplayer)
+}

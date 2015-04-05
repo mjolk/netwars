@@ -278,11 +278,12 @@ func Get(c appengine.Context, playerStr string, player *Player) (*datastore.Key,
 	if err != nil {
 		return nil, err
 	}
-	if !cache.Get(c, playerKey.StringID(), player) {
+	memKey := playerKey.StringID() + "Player"
+	if !cache.Get(c, memKey, player) {
 		if err := datastore.Get(c, playerKey, player); err != nil {
 			return nil, err
 		}
-		cache.Add(c, playerKey.StringID(), player)
+		cache.Add(c, memKey, player)
 	}
 	return playerKey, nil
 }

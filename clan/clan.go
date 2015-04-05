@@ -14,6 +14,7 @@ import (
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/player"
 	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -28,6 +29,7 @@ const (
 	THUMBSIZE     = 32
 	CLANNAMEREGEX = `^([a-zA-Z0-9]){3,18}$`
 	CLANTAGREGEX  = `^([a-zA-Z0-9]){3,4}$`
+	LIMIT         = 100
 )
 
 var PlayerAlreadyInvitedError = errors.New("Player already invited \n")
@@ -56,45 +58,71 @@ type Promotion struct {
 }
 
 type Clan struct {
-	Tag            string `json:"clan_tag"`
-	Name           string `json:"clan_name"`
-	ClanID         int64
-	BandwidthUsage float64           `json:"bw_usage"`
+	Tag            string            `json:"clan_tag"`
+	Name           string            `json:"clan_name"`
+	ClanID         int64             `json:"clan_id"`
+	BandwidthUsage float64           `json:"bandwidth_usage"`
 	Cps            int64             `json: "clan_cps"`
-	AmountPlayers  int64             `datastore:",noindex"`
-	Created        time.Time         `datastore:",noindex"`
+	AmountPlayers  int64             `datastore:",noindex" json:"amount_players"`
+	Created        time.Time         `datastore:",noindex" json:"created_on"`
 	Creator        *datastore.Key    `datastore:",noindex" json:"-"`
 	AvatarKey      appengine.BlobKey `datastore:",noindex" json:"-"`
 	Avatar         string            `datastore:",noindex" json:"avatar"`
 	AvatarThumb    string            `datastore:"-" json:"avatar_thumb"`
-	Members        []*player.Player  `datastore:"-" json:"clan_members"`
+	Members        []player.Player   `datastore:"-" json:"clan_members"`
 	Message        string            `datastore:",noindex" json:"message"`
 	Profile        string            `datastore:",noindex" json:"profile"`
 	Site           string            `datastore:",noindex" json:"clan_site"`
 	Description    string            `datastore:",noindex" json:"description"`
 }
 
+type PublicClan struct {
+	Tag            string                `json:"clan_tag"`
+	Name           string                `json:"clan_name"`
+	ClanID         int64                 `json:"clan_id"`
+	BandwidthUsage float64               `json:"bandwidth_usage"`
+	Cps            int64                 `json: "clan_cps"`
+	AmountPlayers  int64                 `datastore:",noindex" json:"amount_players"`
+	Created        time.Time             `datastore:",noindex" json:"created_on"`
+	Creator        *datastore.Key        `datastore:",noindex" json:"-"`
+	AvatarKey      appengine.BlobKey     `datastore:",noindex" json:"-"`
+	Avatar         string                `datastore:",noindex" json:"-"`
+	AvatarThumb    string                `datastore:"-" json:"avatar_thumb"`
+	Members        []player.PublicPlayer `datastore:"-" json:"clan_members"`
+	Message        string                `datastore:",noindex" json:"-"`
+	Profile        string                `datastore:",noindex" json:"profile"`
+	Site           string                `datastore:",noindex" json:"clan_site"`
+	Description    string                `datastore:",noindex" json:"description"`
+}
+
+type ClanList struct {
+	Cursor string
+	Clans  []PublicClan
+}
+
 type Invite struct {
-	Player        *datastore.Key
-	PlayerName    string
-	Expires       time.Time
-	Clan          *datastore.Key
-	ClanName      string
-	InvitedBy     *datastore.Key
-	InvitedByName string
-	Invited       time.Time
-	DbKey         *datastore.Key `datastore:"-"`
+	Player        *datastore.Key `json:"-"`
+	PlayerName    string         `json:"player_name"`
+	Expires       time.Time      `json:"expires"`
+	Clan          *datastore.Key `json:"-"`
+	ClanName      string         `json:"clan_name"`
+	InvitedBy     *datastore.Key `json:"-"`
+	InvitedByName string         `json:"invited_name"`
+	Invited       time.Time      `json:"invited_on"`
+	DbKey         *datastore.Key `datastore:"-" json:"-"`
+	EncodedKey    string         `datastore:"-" json:"key"`
 }
 
 //parent clan
 type ClanConnection struct {
-	Key     *datastore.Key `datastore:"-"`
-	Player  *datastore.Key `datastore:",noindex"` //clan leadership initiating connection, blame ...
-	Target  *datastore.Key //target clan
-	Created time.Time
-	Expires time.Time //lock expiration
-	Active  bool      //
-	Closed  time.Time
+	DbKey      *datastore.Key `datastore:"-" json:"-"`
+	EncodedKey string         `datastore:"-" json:""`
+	Player     *datastore.Key `datastore:",noindex" json:"-"` //clan leadership initiating connection, blame ...
+	Target     *datastore.Key `json:"-"`                      //target clan
+	Created    time.Time      `json:"created_on"`
+	Expires    time.Time      `json:"expires"` //lock expiration
+	Active     bool           `json:"active"`  //
+	Closed     time.Time      `json:"closed_on"`
 }
 
 type MessageUpdate struct {
@@ -164,12 +192,31 @@ func InvitesForPlayer(c appengine.Context, playerStr string) ([]Invite, error) {
 				return nil, err
 			}
 			invite.DbKey = key
+			invite.EncodedKey = key.Encode()
 			invites = append(invites, invite)
 		}
 		cache.Add(c, invMemKey, invites)
 	}
 	return invites, nil
 
+}
+
+func KeyByID(c appengine.Context, id int64) (*datastore.Key, error) {
+	k := fmt.Sprintf("%d", id)
+	rk := new(datastore.Key)
+	if !cache.Get(c, k, rk) {
+		q := datastore.NewQuery("Clan").Filter("ClanID =", id).KeysOnly().Limit(1)
+		result := make([]Clan, 1, 1)
+		keys, err := q.GetAll(c, &result)
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) > 0 {
+			rk = keys[0]
+			cache.Add(c, k, rk)
+		}
+	}
+	return rk, nil
 }
 
 func Get(c appengine.Context, clanKey *datastore.Key, team *Clan) error {
@@ -183,21 +230,70 @@ func Get(c appengine.Context, clanKey *datastore.Key, team *Clan) error {
 	return nil
 }
 
-func Status(c appengine.Context, clanStr string, team *Clan) error {
-	clanKey, err := datastore.DecodeKey(clanStr)
+func PublicGet(c appengine.Context, clanKey *datastore.Key, team *PublicClan) error {
+	cMemKey := clanKey.StringID() + "Clan"
+	if !cache.Get(c, cMemKey, team) {
+		if err := datastore.Get(c, clanKey, team); err != nil {
+			return err
+		}
+		cache.Add(c, cMemKey, team)
+	}
+	return nil
+}
+
+func PublicStatus(c appengine.Context, pkeyStr, clanIdStr string, team *PublicClan) error {
+	clanId, err := strconv.ParseInt(clanIdStr, 10, 64)
 	if err != nil {
 		return err
 	}
-	if err := datastore.Get(c, clanKey, team); err != nil {
+	clanKey, err := KeyByID(c, clanId)
+	if err != nil {
+		return err
+	}
+	if err := PublicGet(c, clanKey, team); err != nil {
 		return err
 	}
 	pCnt := team.AmountPlayers
 	team.BandwidthUsage = 0
 	team.Cps = 0
-	team.Members = make([]*player.Player, pCnt, pCnt)
+	team.Members = make([]player.PublicPlayer, pCnt, pCnt)
 	//TODO  todo project
 	var cnt int
 	q := datastore.NewQuery("Player").Filter("ClanKey =", clanKey)
+	for it := q.Run(c); ; {
+		var member player.PublicPlayer
+		key, err := it.Next(&member)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		member.DbKey = key
+		team.Members[cnt] = member
+		team.BandwidthUsage += member.BandwidthUsage
+		team.Cps += member.Cps
+		cnt++
+	}
+	return nil
+}
+
+func Status(c appengine.Context, playerStr string, team *Clan) error {
+	iplayer := new(player.Player)
+	_, err := player.Get(c, playerStr, iplayer)
+	if err != nil {
+		return err
+	}
+	if err := datastore.Get(c, iplayer.ClanKey, team); err != nil {
+		return err
+	}
+	pCnt := team.AmountPlayers
+	team.BandwidthUsage = 0
+	team.Cps = 0
+	team.Members = make([]player.Player, pCnt, pCnt)
+	//TODO  todo project
+	var cnt int
+	q := datastore.NewQuery("Player").Filter("ClanKey =", iplayer.ClanKey)
 	for it := q.Run(c); ; {
 		var member player.Player
 		key, err := it.Next(&member)
@@ -208,7 +304,7 @@ func Status(c appengine.Context, clanStr string, team *Clan) error {
 			return err
 		}
 		member.DbKey = key
-		team.Members[cnt] = &member
+		team.Members[cnt] = member
 		team.BandwidthUsage += member.BandwidthUsage
 		team.Cps += member.Cps
 		cnt++
@@ -216,7 +312,102 @@ func Status(c appengine.Context, clanStr string, team *Clan) error {
 	return nil
 }
 
-func cancelInvite(c appengine.Context, playerStr, inviteStr string) error {
+func List(c appengine.Context, playerStr, rangeStr, cursor string) (ClanList, error) {
+	q := datastore.NewQuery("Clan").Order("-BandwidthUsage").Limit(LIMIT)
+	team := new(Clan)
+	iplayer := new(player.Player)
+	_, err := player.Get(c, playerStr, iplayer)
+	if err != nil {
+		return ClanList{}, err
+	}
+	if err := Get(c, iplayer.ClanKey, team); err != nil {
+		return ClanList{}, err
+	}
+	if len(rangeStr) > 0 {
+		rangeBool, err := strconv.ParseBool(rangeStr)
+		if err != nil {
+			return ClanList{}, err
+		}
+		if rangeBool {
+			rangeLo, rangeHi := team.Range()
+			q = q.Filter("BandwidthUsage >", rangeLo).
+				Filter("BandwidthUsage <", rangeHi)
+		}
+	}
+	clans := make([]PublicClan, LIMIT, LIMIT)
+	if len(cursor) > 0 {
+		cur, err := datastore.DecodeCursor(cursor)
+		if err != nil {
+			return ClanList{}, err
+		}
+		q = q.Start(cur)
+	}
+	t := q.Run(c)
+	var cnt int
+	for {
+		var team PublicClan
+		key, err := t.Next(&team)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return ClanList{}, err
+		}
+		if !iplayer.ClanKey.Equal(key) {
+			clans[cnt] = team
+			cnt++
+		}
+	}
+	clans = clans[:cnt]
+	newCur, err := t.Cursor()
+	if err != nil {
+		return ClanList{}, err
+	}
+	list := ClanList{
+		Cursor: newCur.String(),
+		Clans:  clans,
+	}
+	return list, nil
+}
+
+func CancelInvite(c appengine.Context, playerStr, inviteStr string) error {
+	inviteKey, err := datastore.DecodeKey(inviteStr)
+	if err != nil {
+		return err
+	}
+	iplayer := new(player.Player)
+	playerKey, err := player.Get(c, playerStr, iplayer)
+	if err != nil {
+		return err
+	}
+	return datastore.RunInTransaction(c, func(c appengine.Context) error {
+		if err := datastore.Delete(c, inviteKey); err != nil {
+			return err
+		}
+		e1 := &event.Event{
+			Player:    playerKey,
+			Created:   created,
+			EventType: "Invite",
+			Direction: event.OUT,
+			Target:    iplayer.ClanKey,
+			Action:    "Cancel",
+		}
+		if err := event.Send(c, []*event.Event{e, e1}, func(c appengine.Context, e []*event.Event) error {
+			aEvent := e[0]
+			bEvent := e[1]
+			team := new(Clan)
+			if err := Get(c, aEvent.Clan, team); err != nil {
+				c.Errorf("error getting clan %s", err)
+			}
+			aEvent.ClanName = team.Name
+			aEvent.ClanID = team.ClanID
+			bEvent.ClanName = team.Name
+			bEvent.ClanID = team.ClanID
+			return event.Func(c, e)
+		}); err != nil {
+			return err
+		}
+	})
 	return nil
 }
 
@@ -381,7 +572,7 @@ func Connect(c appengine.Context, playerStr, target string) error {
 	}
 	newConnKey := datastore.NewKey(c, "ClanConnection", connKeyGuid, 0, iplayer.ClanKey)
 	newConnection := &ClanConnection{
-		Key:     newConnKey,
+		DbKey:   newConnKey,
 		Player:  playerKey,
 		Target:  defendingClanKey,
 		Created: time.Now(),

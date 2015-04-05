@@ -11,25 +11,11 @@ import (
 	"net/http"
 )
 
-type Route struct {
-	Name     string
-	Path     []string
-	Method   string
-	Headers  []string
-	Handler  http.HandlerFunc
-	Request  interface{}
-	Response interface{}
-	Auth     bool
-}
-
-type Routes []Route
-
-var jsonheader = []string{"Accept", "application/json; charset=UTF-8"}
-
-var routes = map[string]Routes{
+var API = map[string]Routes{
 	"/players": Routes{
 		Route{
-			"login",
+			"login player , returns access token",
+			[]string{"login"},
 			[]string{"/login"},
 			"POST",
 			jsonheader,
@@ -39,7 +25,8 @@ var routes = map[string]Routes{
 			false,
 		},
 		Route{
-			"createplayer",
+			"create new player, returns access token",
+			[]string{"createplayer"},
 			[]string{"/"},
 			"POST",
 			jsonheader,
@@ -49,7 +36,8 @@ var routes = map[string]Routes{
 			false,
 		},
 		Route{
-			"playerstatus",
+			"retrieve player status",
+			[]string{"playerstatus"},
 			[]string{"/status"},
 			"GET",
 			jsonheader,
@@ -59,7 +47,19 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"allocate",
+			"retrieve public player",
+			[]string{"publicplayer.playerid"},
+			[]string{"/status/{playerid}"},
+			"GET",
+			jsonheader,
+			player.PublicStatusPlayer,
+			nil,
+			utils.JSONResult{Result: player.PublicPlayer{}},
+			true,
+		},
+		Route{
+			"allocates new program to be used",
+			[]string{"allocate"},
 			[]string{"/allocation"},
 			"POST",
 			jsonheader,
@@ -69,7 +69,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"deallocate",
+			"deallocate program",
+			[]string{"deallocate"},
 			[]string{"/deallocation"},
 			"POST",
 			jsonheader,
@@ -79,8 +80,10 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"playerlist",
-			[]string{"/targets", "/targets/{range}", "/list/{range}/{cursor}"},
+			`retrieve public player list, arguments(optional) /range/cursor 
+				range= true/false -> only players in attack range; cursor -> key received in previous request to load next batch (paging)`,
+			[]string{"playerlist", "playerlist.rangebool", "playerlist.rangebool.cursor", "playerlist.cursor"},
+			[]string{"/targets", "/targets/{rangebool:true|false}", "/targets/{rangebool:true|false}/{cursor}", "/targets/{cursor}"},
 			"GET",
 			jsonheader,
 			player.GetPlayerList,
@@ -90,7 +93,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"playeruploadurl",
+			"retrieve upload url for player avatar",
+			[]string{"playeruploadurl"},
 			[]string{"/avatar"},
 			"GET",
 			jsonheader,
@@ -100,7 +104,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"playerupload",
+			"upload player avatar image, retrieve uploadurl first",
+			[]string{"playerupload"},
 			[]string{"/avatar"},
 			"POST",
 			jsonheader,
@@ -110,7 +115,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"updateprofile",
+			"update private player profile",
+			[]string{"updateprofile"},
 			[]string{"/profile"},
 			"POST",
 			jsonheader,
@@ -127,7 +133,9 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"playertrackers",
+			`retrieve player local new events/message counter, with clankey retrieves new global events/message counter
+				optional argument clankey -> retrieve global tracker (clan events)`,
+			[]string{"playertrackers", "playertrackers.clankey"},
 			[]string{"/trackers", "/trackers/{clankey}"},
 			"GET",
 			jsonheader,
@@ -137,7 +145,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"localevents",
+			"retrieve player local events; optional argument cursor -> paging",
+			[]string{"localevents", "localevents.cursor"},
 			[]string{"/localevents", "/localevents/{cursor}"},
 			"GET",
 			jsonheader,
@@ -148,7 +157,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"globalevents",
+			"retrieve player global events (clan) ; optional argument cursor -> paging",
+			[]string{"globalevents", "globalevents.cursor"},
 			[]string{"/globalevents", "/globalevents/{cursor}"},
 			"GET",
 			jsonheader,
@@ -161,7 +171,8 @@ var routes = map[string]Routes{
 	},
 	"/clans": Routes{
 		Route{
-			"createclan",
+			"create new clan",
+			[]string{"createclan"},
 			[]string{"/"},
 			"POST",
 			jsonheader,
@@ -171,7 +182,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"clanstatus",
+			"retrieve clan status (private)",
+			[]string{"clanstatus"},
 			[]string{"/status"},
 			"GET",
 			jsonheader,
@@ -180,18 +192,33 @@ var routes = map[string]Routes{
 			utils.JSONResult{Result: clan.Clan{}},
 			true,
 		},
-		Route{ //TODO add public clan lookup, route does nothing for now
-			"clanstatuspublic",
-			[]string{"/status/{clankey}"},
+		Route{
+			"retrieve public clan status",
+			[]string{"clanstatus.clanid"},
+			[]string{"/status/{clanid:[0-9]+}"},
 			"GET",
 			jsonheader,
-			clan.ClanStatus,
+			clan.PublicClanStatus,
 			nil,
 			utils.JSONResult{Result: clan.Clan{}},
 			true,
 		},
 		Route{
-			"invite",
+			`retrieve public clan list, arguments(optional) /range/cursor 
+				range= true/false -> only clans in attack range; cursor -> key received in previous request to load next batch (paging)`,
+			[]string{"clanlist", "clanlist.rangebool", "clanlist.rangebool.cursor", "clanlist.cursor"},
+			[]string{"/list", "/list/{rangebool:true|false}", "/list/{rangebool:true|false}/{cursor}", "/list/{cursor}"},
+			"GET",
+			jsonheader,
+			player.GetPlayerList,
+			nil,
+			utils.JSONResult{Result: player.PlayerList{Cursor: "send to get next page",
+				Players: []player.Profile{player.Profile{}}}},
+			true,
+		},
+		Route{
+			"invite player to join clan",
+			[]string{"invite"},
 			[]string{"/invitations"},
 			"POST",
 			jsonheader,
@@ -201,7 +228,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"invites",
+			"retrieve current active invitations",
+			[]string{"invites"},
 			[]string{"/invitations"},
 			"GET",
 			jsonheader,
@@ -211,7 +239,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"joinclan",
+			"join clan for invitation",
+			[]string{"joinclan"},
 			[]string{"/links"},
 			"POST",
 			jsonheader,
@@ -221,7 +250,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"leaveclan",
+			"leave current clan",
+			[]string{"leaveclan"},
 			[]string{"/unlinks"},
 			"POST",
 			jsonheader,
@@ -231,7 +261,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"war",
+			"declare war on clan, only way to gain clan points, after 24h you can declare peace",
+			[]string{"war"},
 			[]string{"/connections"},
 			"POST",
 			jsonheader,
@@ -241,7 +272,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"peace",
+			"declare peace with clan",
+			[]string{"peace"},
 			[]string{"/disconnections"},
 			"POST",
 			jsonheader,
@@ -251,7 +283,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"clanuploadurl",
+			"get upload url for clan avatar (img)",
+			[]string{"clanuploadurl"},
 			[]string{"/avatar"},
 			"GET",
 			jsonheader,
@@ -261,7 +294,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"clanupload",
+			"upload clan avatar (img)",
+			[]string{"clanupload"},
 			[]string{"/avatar"},
 			"POST",
 			jsonheader,
@@ -271,7 +305,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"clanmessage",
+			"update clan message",
+			[]string{"clanmessage"},
 			[]string{"/messages"},
 			"POST",
 			jsonheader,
@@ -281,7 +316,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"promote",
+			"promote player",
+			[]string{"promote"},
 			[]string{"/promotions"},
 			"POST",
 			jsonheader,
@@ -291,7 +327,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"demote",
+			"demote player",
+			[]string{"demote"},
 			[]string{"/demotions"},
 			"POST",
 			jsonheader,
@@ -301,7 +338,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"kick",
+			"remove player from clan",
+			[]string{"kick"},
 			[]string{"/removals"},
 			"POST",
 			jsonheader,
@@ -313,19 +351,22 @@ var routes = map[string]Routes{
 	},
 	"/attacks": Routes{
 		Route{
-			"attack",
+			"attack player",
+			[]string{"attack"},
 			[]string{"/"},
 			"POST",
 			jsonheader,
 			attack.AttackPlayer,
 			attack.AttackCfg{},
-			utils.JSONResult{Result: attack.AttackEvent{}},
+			utils.JSONResult{Result: attack.AttackEvent{AttackType: 0,
+				Event: &event.Event{EventPrograms: []event.EventProgram{event.EventProgram{}}}}},
 			true,
 		},
 	},
 	"/messages": Routes{
 		Route{
-			"createorupdate",
+			"create new message or update owned message (admin can do everything)",
+			[]string{"createorupdatemessage"},
 			[]string{"/"},
 			"POST",
 			jsonheader,
@@ -335,7 +376,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"clanforum",
+			"retrieve clan forum",
+			[]string{"clanforum", "clanforum.cursor"},
 			[]string{"/boards/clan", "/boards/clan/{cursor}"},
 			"GET",
 			jsonheader,
@@ -346,7 +388,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"publicboards",
+			"retrieve public boards",
+			[]string{"publicboards", "publicboards.cursor"},
 			[]string{"/boards/public", "/boards/public/{cursor}"},
 			"GET",
 			jsonheader,
@@ -357,7 +400,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"threads",
+			"retrieve threads for board",
+			[]string{"threads.bkey", "threads.bkey.cursor"},
 			[]string{"/threads/{bkey}", "/threads/{bkey}/{cursor}"},
 			"GET",
 			jsonheader,
@@ -369,7 +413,8 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"messages",
+			"retrieve messages for thread",
+			[]string{"messages.tkey", "messages.tkey.cursor"},
 			[]string{"/messages/{tkey}", "/messages/{tkey}/{cursor}"},
 			"GET",
 			jsonheader,
@@ -383,7 +428,8 @@ var routes = map[string]Routes{
 	},
 	"/programs": Routes{
 		Route{
-			"getallprograms",
+			"retrieve all current active programs",
+			[]string{"getallprograms"},
 			[]string{"/"},
 			"GET",
 			jsonheader,
@@ -393,29 +439,32 @@ var routes = map[string]Routes{
 			true,
 		},
 		Route{
-			"createorupdate",
+			"create or update program",
+			[]string{"createorupdateprogram"},
 			[]string{"/"},
 			"POST",
 			jsonheader,
 			program.CreateOrUpdateProgram,
-			program.Program{},
+			utils.JSONResult{Result: program.Program{}},
 			http.StatusOK,
 			true,
 		},
 		Route{
-			"getprogram",
+			"get single program",
+			[]string{"getprogram.key"},
 			[]string{"/{key}"},
 			"GET",
 			jsonheader,
 			program.GetProgram,
 			nil,
-			program.Program{},
+			utils.JSONResult{Result: program.Program{}},
 			true,
 		},
 	},
 	"/load": Routes{
 		Route{
-			"loadjsonprograms",
+			"internal loads all prgrams into datastore",
+			[]string{"loadjsonprograms"},
 			[]string{"/programs"},
 			"GET",
 			[]string{},

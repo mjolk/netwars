@@ -136,13 +136,11 @@ func Save(p *Program) {
 func KeyGet(c appengine.Context, pKey *datastore.Key) (*Program, error) {
 	stringId := pKey.StringID()
 	if program, ok := memprograms.Get(stringId); ok {
-		c.Debugf("program from L1 cache --\n")
 		return program, nil
 	}
 	program := new(Program)
 	if !cache.Get(c, stringId, program) {
 		if err := datastore.Get(c, pKey, program); err != nil {
-			c.Debugf("program from store -- %s\n", err)
 			return nil, err
 		}
 		program.Name = stringId
@@ -171,7 +169,6 @@ func GetAll(c appengine.Context, programs map[string][]Program) error {
 	for t := qp.Run(c); ; {
 		var p Program
 		key, err := t.Next(&p)
-		fmt.Printf("programs search: %v", p)
 		if err == datastore.Done {
 			break
 		} else if err != nil {
@@ -197,7 +194,6 @@ func LoadFromFile(c appengine.Context) error {
 	json.Unmarshal(file, &jsontype)
 	for _, program := range jsontype {
 		if err := CreateOrUpdate(c, &program); err != nil {
-			c.Debugf("error %s", err)
 			errString += fmt.Sprintf("%s\n", err.Error())
 		}
 	}
@@ -227,7 +223,6 @@ func CreateOrUpdate(c appengine.Context, program *Program) error {
 			program.Infect = datastore.NewKey(c, "Program", program.InfectName, 0, nil)
 		}
 		if _, err := datastore.Put(c, pkey, program); err != nil {
-			c.Debugf("datastore error: %s", err)
 			return err
 		}
 

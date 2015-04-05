@@ -309,12 +309,11 @@ func TestSpy(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     INT,
-		Pkey:           attackerKey.Encode(),
 		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
-	spyEvent, err := Spy(c, attackCfg)
+	spyEvent, err := Spy(c, attackerKey.Encode(), attackCfg)
 	if err != nil {
 		t.Fatalf("spy error %s \n", err)
 	}
@@ -365,7 +364,6 @@ func TestIce(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     ICE,
-		Pkey:           attackerKey.Encode(),
 		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
@@ -374,7 +372,7 @@ func TestIce(t *testing.T) {
 	}
 	t.Logf("defender bandwidthusage: %f \n", defender.BandwidthUsage)
 	testutils.PurgeQueue(c, t)
-	spyEvent, err := Ice(c, attackCfg)
+	spyEvent, err := Ice(c, attackerKey.Encode(), attackCfg)
 	if err != nil {
 		t.Fatalf("spy error %s \n", err)
 	}
@@ -457,12 +455,11 @@ func TestAttack(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     BW,
-		Pkey:           attackerKey.Encode(),
 		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
-	attackEvent, err := Attack(c, attackCfg)
+	attackEvent, err := Attack(c, attackerKey.Encode(), attackCfg)
 	if err != nil {
 		t.Fatalf("attack error %s \n", err)
 	}
@@ -563,12 +560,11 @@ func TestAttackWithClan(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     BW,
-		Pkey:           attackerKey.Encode(),
 		Target:         defender.PlayerID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
-	attackEvent, err := Attack(c, attackCfg)
+	attackEvent, err := Attack(c, attackerKey.Encode(), attackCfg)
 	if err != nil {
 		t.Fatalf("attack error %s \n", err)
 	}

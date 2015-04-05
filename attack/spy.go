@@ -16,13 +16,17 @@ const (
 	MINVCH float64 = 50.0
 )
 
-func Spy(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
+func Spy(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, error) {
 	c.Infof("running spy attack <<<\n")
 	ln := len(cfg.ActivePrograms)
 	if ln < 1 || ln > 1 {
 		return AttackEvent{}, errors.New("Invalid input")
 	}
-	attackerKey, defenderKey, err := cfg.Keys(c)
+	attackerKey, err := datastore.DecodeKey(playerStr)
+	if err != nil {
+		return AttackEvent{}, err
+	}
+	defenderKey, err := player.KeyByID(c, cfg.Target)
 	if err != nil {
 		return AttackEvent{}, err
 	}
@@ -39,7 +43,7 @@ func Spy(c appengine.Context, cfg AttackCfg) (AttackEvent, error) {
 			}
 			playerStCh <- 0
 		}()
-		if err := player.Status(c, cfg.Pkey, attacker); err != nil {
+		if err := player.Status(c, playerStr, attacker); err != nil {
 			return err
 		}
 		<-playerStCh

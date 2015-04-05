@@ -31,6 +31,51 @@ func ClanStatus(w http.ResponseWriter, r *http.Request) {
 	res.JSONf(w)
 }
 
+func PublicClanStatus(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	team := new(PublicClan)
+	pkeyStr := utils.Pkey(r)
+	clanStr := utils.Var(r, "clanid")
+	var res utils.JSONResult
+	if err := PublicStatus(c, pkeyStr, clanStr, team); err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	}
+	res = utils.JSONResult{Success: true, Result: team}
+	res.JSONf(w)
+}
+
+func GetClanList(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	cur := utils.Var(r, "cursor")
+	playerKey := utils.Pkey(r)
+	attackRange := utils.Var(r, "rangebool")
+	list, err := List(c, playerKey, attackRange, cur)
+	var res utils.JSONResult
+	if err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+	} else {
+		res = utils.JSONResult{Success: true, Result: list}
+	}
+	res.JSONf(w)
+}
+
+func CancelPlayerInvite(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	sk := SendKey{}
+	var res utils.JSONResult
+	if err := utils.DecodeJsonBody(r, &sk); err != nil {
+		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res.JSONf(w)
+		return
+	}
+	playerStr := utils.Pkey(r)
+	inviteKeyStr := sk.Key
+	if err := CancelInvite(c, playerStr, inviteKeyStr); err != nil {
+		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res.JSONf(w)
+	}
+}
+
 func EditLeaderShip(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	var res utils.JSONResult

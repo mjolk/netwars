@@ -31,10 +31,10 @@ var AccessType = map[string]int64{
 }
 
 type MessageList struct {
-	Cursor    string
-	Messages  []Message
-	BoardKey  string
-	ThreadKey string
+	Cursor    string    `json:"cursor"`
+	Messages  []Message `json:"messages"`
+	BoardKey  string    `json:"board_key"`
+	ThreadKey string    `json:"thread_key"`
 }
 
 type Message struct {
@@ -49,19 +49,19 @@ type Message struct {
 	Scope       int64          `json:"scope"` // message container
 	Created     time.Time      `json:"created"`
 	MessageID   int64          `datastore:",noindex" json:"message_id"`
-	Content     string         `datastore:",noindex"`
-	Signature   string         `datastore:",noindex"`
-	AvatarThumb string         `datastore:",noindex"`
-	PlayerName  string         `datastore:",noindex"`
-	PlayerID    int64
-	Subject     string `datastore:",noindex"`
-	IsThread    bool   `json:"-"`
-	IsBoard     bool
-	IsDeleted   bool   `json:"-"`
-	Access      int64  `json:"-"`
-	AccessName  string `datastore:"-" json:"access"`
-	Recipient   *datastore.Key
-	Board       *datastore.Key
+	Content     string         `datastore:",noindex" json:"content"`
+	Signature   string         `datastore:",noindex" json:"signature"`
+	AvatarThumb string         `datastore:",noindex" json:"avatar_thumb"`
+	PlayerName  string         `datastore:",noindex" json:"player_name"`
+	PlayerID    int64          `json:"player_id"`
+	Subject     string         `datastore:",noindex" json:"subject"`
+	IsThread    bool           `json:"-"`
+	IsBoard     bool           `json:"-"`
+	IsDeleted   bool           `json:"-"`
+	Access      int64          `json:"-"`
+	AccessName  string         `datastore:"-" json:"access"`
+	Recipient   *datastore.Key `json:"-"`
+	Board       *datastore.Key `json:"-"`
 }
 
 func newMessageID(c appengine.Context, cntCh chan<- int64) {
