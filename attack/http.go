@@ -12,7 +12,7 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 	playerStr := utils.Pkey(r)
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &cfg); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 	} else {
 		var response AttackEvent
 		var err error
@@ -25,10 +25,10 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request) {
 			response, err = Spy(c, playerStr, cfg)
 		}
 		if err != nil {
-			res = utils.JSONResult{Success: false, Error: err.Error()}
+			res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 			c.Debugf("result switch %+v\n", res)
 		} else {
-			res = utils.JSONResult{Success: true, Result: response}
+			res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: response}
 		}
 	}
 	res.JSONf(w)

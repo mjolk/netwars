@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"appengine"
 	"appengine/blobstore"
 	"encoding/json"
 	"errors"
@@ -23,7 +24,8 @@ var (
 		"image/tiff",
 		"image/x-icon",
 	}
-	NoAccess = "No Access"
+	NoAccess     = "No Access"
+	certificates []*appengine.Certificate
 )
 
 type contextKey int
@@ -34,33 +36,45 @@ const (
 )
 
 type JSONResult struct {
-	Success     bool        `json:"-"`
-	EntityError bool        `json:"-"`
-	Error       string      `json:"error"`
-	Result      interface{} `json:"result, omitempty"`
+	Success    bool        `json:"-"`
+	StatusCode int         `json:"-"`
+	Error      string      `json:"error"`
+	Result     interface{} `json:"result, omitempty"`
 }
 
 func (r *JSONResult) JSONf(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if !r.Success {
-		if r.EntityError {
-			w.WriteHeader(422)
-		} else {
-			switch r.Error {
-			case NoAccess:
-				w.WriteHeader(http.StatusUnauthorized)
-			default:
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		}
+		w.WriteHeader(r.StatusCode)
 	}
 	if err := json.NewEncoder(w).Encode(r); err != nil {
 		panic(err)
 	}
 }
 
-func CreateTokenString(playerKey string) (string, error) {
-	token := jwt.New(jwt.GetSigningMethod("HS256"))
+func loadCertificates(c appengine.Context) error {
+	certs, err := appengine.PublicCertificates(c)
+	if err != nil {
+		return err
+	}
+	ln := len(certs)
+	certificates = make([]*appengine.Certificate, ln, ln)
+	for k, cert := range certs {
+		certificates[k] = &cert
+	}
+	return nil
+}
+
+func CreateTokenString(c appengine.Context, playerKey string) (string, error) {
+	token := jwt.New(jwt.SigningMethodHS256)
+	if !appengine.IsDevAppServer() {
+		if len(certificates) == 0 {
+			if err := loadCertificates(c); err != nil {
+				return "", err
+			}
+		}
+		token = jwt.New(&SigningMethodAppengine{c})
+	}
 	token.Claims["pkey"] = playerKey
 	// Expire in a week
 	token.Claims["exp"] = time.Now().Add(time.Hour * 168).Unix()
@@ -100,15 +114,42 @@ func Var(r *http.Request, vr string) string {
 
 func ValidateToken(tokenString string) (string, error) {
 	var playerStr string
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(JWTSECRET), nil
-	})
-	if err == nil && token.Valid {
+	var vErr *jwt.ValidationError
+	var token *jwt.Token
+	if !appengine.IsDevAppServer() {
+		maxTries := len(certificates)
+		for i := 0; i < maxTries; {
+			var err error
+			token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+				cert := certificates[i]
+				return cert.Data, nil
+			})
+			if err != nil {
+				vErr = err.(*jwt.ValidationError)
+				if jwt.ValidationErrorSignatureInvalid == vErr.Errors&jwt.ValidationErrorSignatureInvalid {
+					i++
+					continue
+				}
+			}
+		}
+	} else {
+		var err error
+		token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return []byte(JWTSECRET), nil
+		})
+		if err != nil {
+			vErr = err.(*jwt.ValidationError)
+
+		}
+	}
+
+	if vErr == nil && token.Valid {
 		playerStr = token.Claims["pkey"].(string)
-	} else if err != nil {
-		verr := err.(jwt.ValidationError)
-		if jwt.ValidationErrorExpired == jwt.ValidationErrorExpired&verr.Errors {
+	} else if vErr != nil {
+		if jwt.ValidationErrorExpired == jwt.ValidationErrorExpired&vErr.Errors {
 			//TODO expired : regenerate???
+			//playerStr = token.Claims["pkey"].(string)
+
 		}
 		return "", errors.New("Invalid token")
 	}

@@ -48,6 +48,10 @@ func Spy(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, err
 		}
 		<-playerStCh
 		attackEvent := NewAttackEvent(cfg.AttackType, event.OUT, attacker, defender)
+		attackEvent.Memory = 2
+		if attacker.ActiveMemory < 2 {
+			return errors.New("Not enough active memory")
+		}
 		attackProgram := &AttackEventProgram{nil, new(event.EventProgram)}
 		activeProg := cfg.ActivePrograms[0]
 		attackProgramKey, err := datastore.DecodeKey(activeProg.Key)
@@ -169,7 +173,8 @@ func Spy(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, err
 				}
 			}
 		}
-		attacker.Memory -= 2
+		attacker.Memory -= attackEvent.Memory
+		attacker.ActiveMemory -= attackEvent.Memory
 		c.Debugf("attackEvent &+v \n", attackEvent.Event.EventPrograms)
 		if result.Killed {
 			if attackProgram.PlayerProgram.Amount < 0 {

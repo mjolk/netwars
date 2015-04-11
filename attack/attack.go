@@ -74,7 +74,7 @@ type AttackWindow struct {
 type AttackEvent struct {
 	AttackType int64 `json:"attack_type"`
 	*event.Event
-	Connection *datastore.Key `json:"-"`
+	Connection clan.ClanConnection `json:"-"`
 }
 
 type AttackEventProgram struct {
@@ -211,44 +211,28 @@ func isValidAttack(attacker, defender *player.Player) {
 
 }
 
-func getConnection(c appengine.Context, aKey, bKey *datastore.Key) ([]*datastore.Key, error) {
-	q := datastore.NewQuery("ClanConnection").Ancestor(aKey).
-		Filter("Active =", true).Filter("Target =", bKey).KeysOnly().Limit(1)
-	conns := make([]*clan.ClanConnection, 1, 1)
-	connKeys, connErr := q.GetAll(c, &conns)
-	if connErr != nil {
-		return nil, connErr
-	}
-	return connKeys, nil
-}
-
 func loadWar(c appengine.Context, doneCh chan<- int, attacker, defender *AttackEvent) {
-	attackConn := make(chan *datastore.Key)
-	defenseConn := make(chan *datastore.Key)
 	var war int
-	go func() {
-		aConnKeys, err := getConnection(c, attacker.Clan, defender.Clan)
-		if err != nil {
+	aClanId := make(chan int64)
+	aClan := new(clan.Clan)
+	go func(cl *clan.Clan) {
+		if err := clan.Get(c, attacker.Clan, cl); err != nil {
 			c.Errorf("error getting connection %s \n", err)
 		}
-		if len(aConnKeys) > 0 {
-			attackConn <- aConnKeys[0]
-		}
-	}()
-	go func() {
-		dConnKeys, err := getConnection(c, defender.Clan, attacker.Clan)
-		if err != nil {
-			c.Errorf("error getting defending clan %s \n", err)
-		}
-		if len(dConnKeys) > 0 {
-			defenseConn <- dConnKeys[0]
-		}
-	}()
-	for i := 0; i < 2; i++ {
-		select {
-		case attacker.Connection = <-attackConn:
-		case defender.Connection = <-defenseConn:
-		}
+		aClanId <- aClan.ID
+	}(aClan)
+	dClan := new(clan.Clan)
+	if err := clan.Get(c, defender.Clan, dClan); err != nil {
+		c.Errorf("error getting connection %s \n", err)
+	}
+	aConn := aClan.ConnectionForID(dClan.ID)
+	aId := <-aClanId
+	dConn := dClan.ConnectionForID(aId)
+	if aConn.Target > 0 {
+		war++
+	}
+	if dConn.Target > 0 {
+		war++
 	}
 	doneCh <- war
 }
@@ -347,10 +331,11 @@ func NewAttackEvent(t int64, dir int64, player, target *player.Player) *AttackEv
 			Target:     target.DbKey,
 			Action:     AttackName[t],
 			PlayerName: player.Nick,
-			PlayerID:   player.PlayerID,
+			PlayerID:   player.ID,
 			TargetName: target.Nick,
-			TargetID:   target.PlayerID},
-		nil,
+			TargetID:   target.ID},
+
+		clan.ClanConnection{},
 	}
 	return ievent
 }
@@ -384,6 +369,17 @@ func Attack(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, 
 		<-playerStCh
 		attackEvent := NewAttackEvent(cfg.AttackType, event.OUT, attacker, defender)
 		defenseEvent := NewAttackEvent(cfg.AttackType, event.IN, defender, attacker)
+		if attacker.BandwidthUsage < defender.BandwidthUsage {
+			if attacker.ActiveMemory < 2 {
+				return errors.New("Not enough active memory")
+			}
+			attackEvent.Memory = 2
+		} else {
+			if attacker.ActiveMemory < 3 {
+				return errors.New("Not enough active activememory")
+			}
+			attackEvent.Memory = 3
+		}
 		warCh := make(chan int, 1)
 		if attacker.ClanKey != nil && defender.ClanKey != nil {
 			if attacker.ClanKey.Equal(defender.ClanKey) {
@@ -403,11 +399,6 @@ func Attack(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, 
 			AttackEvent:  defenseEvent,
 			DefenseEvent: attackEvent,
 			BattleMap:    make(map[int64]*AttackFrame),
-		}
-		if attacker.BandwidthUsage < defender.BandwidthUsage {
-			attackEvent.Memory = 2
-		} else {
-			attackEvent.Memory = 3
 		}
 		//TODO check attacker status
 		if err := render(cfg, attacker, defender, attack, defense); err != nil {

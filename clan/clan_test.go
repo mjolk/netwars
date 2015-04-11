@@ -130,6 +130,61 @@ func TestInvite(t *testing.T) {
 	testutils.CheckQueue(c, t, 0)
 }
 
+func TestCancelInvite(t *testing.T) {
+	c, err := aetest.NewContext(nil)
+	if err != nil {
+		t.Fatalf("NewContext: %v", err)
+	}
+	defer c.Close()
+	inviterStr, err := setupPlayer(c, TESTNICK1, TESTEMAIL1)
+	if err != nil {
+		t.Fatalf("Error setting up inviter")
+	}
+	_, _, err = Create(c, inviterStr, CLAN1, "lol")
+	if err != nil {
+		t.Fatalf("\nError creating clan %s", err)
+	}
+	inviteeStr, err := setupPlayer(c, TESTNICK2, TESTEMAIL2)
+	if err != nil {
+		t.Fatalf("\nError setting up invitee", err)
+	}
+	inviteePlayerKey, err := datastore.DecodeKey(inviteeStr)
+	if err != nil {
+		t.Fatalf("\nError decoding key", err)
+	}
+	invitedPlayer := new(player.Player)
+	if err := datastore.Get(c, inviteePlayerKey, invitedPlayer); err != nil {
+		t.Fatalf("\nError getting invited player", err)
+	}
+	testutils.PurgeQueue(c, t)
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+		t.Fatalf("\nError sending invite %s", err)
+	}
+	testutils.CheckQueue(c, t, 1)
+	testutils.PurgeQueue(c, t)
+	time.Sleep(1 * time.Second)
+	invites := make([]Invite, 0)
+	q := datastore.NewQuery("Invite").Filter("Player =", inviteePlayerKey).Limit(1)
+	for it := q.Run(c); ; {
+		var invite Invite
+		key, err := it.Next(&invite)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			t.Fatalf("error loading invite")
+		}
+		invite.DbKey = key
+		invite.EncodedKey = key.Encode()
+		invites = append(invites, invite)
+	}
+	invite := invites[0]
+	if err := CancelInvite(c, inviterStr, invite.EncodedKey); err != nil {
+		t.Fatalf("Error cancelling invite")
+	}
+	testutils.CheckQueue(c, t, 1)
+}
+
 func TestInviteGet(t *testing.T) {
 	c, err := aetest.NewContext(nil)
 	if err != nil {
@@ -162,11 +217,6 @@ func TestInviteGet(t *testing.T) {
 	}
 	testutils.CheckQueue(c, t, 1)
 	testutils.PurgeQueue(c, t)
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
-		if err != PlayerAlreadyInvitedError {
-			t.Fatalf("Error checking player exists")
-		}
-	}
 	time.Sleep(1 * time.Second)
 	invites, err := InvitesForPlayer(c, inviteeStr)
 	if err != nil {
@@ -343,30 +393,20 @@ func TestConnection(t *testing.T) {
 	}
 	clanGuid1, _, err := Create(c, declareStr, CLAN1, "lol")
 	if err != nil {
-		t.Fatalf("\nError creating clan %s", err)
+		t.Fatalf("\nError creating clan %s %s", err, clanGuid1)
 	}
 	clanGuid2, _, err := Create(c, victimStr, CLAN2, "lol")
 	if err != nil {
-		t.Fatalf("\nError creating clan %s", err)
+		t.Fatalf("\nError creating clan %s %s", err, clanGuid2)
 	}
-	clan1Key := datastore.NewKey(c, "Clan", clanGuid1, 0, nil)
 	clan2Key := datastore.NewKey(c, "Clan", clanGuid2, 0, nil)
-	if err := Connect(c, declareStr, clan2Key.Encode()); err != nil {
-		t.Fatalf("\n error connecting to clan %s", err)
+	time.Sleep(1 * time.Second)
+	team := new(Clan)
+	if err := datastore.Get(c, clan2Key, team); err != nil {
+		t.Fatalf("\n error getting defending clan %s", err)
 	}
-
-	connQuery := datastore.NewQuery("ClanConnection").Ancestor(clan1Key)
-	for prIt := connQuery.Run(c); ; {
-		var connection ClanConnection
-		_, err := prIt.Next(&connection)
-		if err == datastore.Done {
-			break
-		}
-		if err != nil {
-			t.Fatalf("error loading profile %s", err)
-		}
-		t.Logf("\n connection saved %+v", connection)
-
+	if err := Connect(c, declareStr, team.ClanID); err != nil {
+		t.Fatalf("\n error connecting to clan %s", err)
 	}
 
 }
@@ -387,48 +427,24 @@ func TestCloseConnection(t *testing.T) {
 	}
 	clanGuid1, _, err := Create(c, declareStr, CLAN1, "lol")
 	if err != nil {
-		t.Fatalf("\nError creating clan %s", err)
+		t.Fatalf("\nError creating clan %s, %s", err, clanGuid1)
 	}
 	clanGuid2, _, err := Create(c, victimStr, CLAN2, "lol")
 	if err != nil {
 		t.Fatalf("\nError creating clan %s", err)
 	}
-	clan1Key := datastore.NewKey(c, "Clan", clanGuid1, 0, nil)
 	clan2Key := datastore.NewKey(c, "Clan", clanGuid2, 0, nil)
-	if err := Connect(c, declareStr, clan2Key.Encode()); err != nil {
+	time.Sleep(1 * time.Second)
+	team := new(Clan)
+	if err := datastore.Get(c, clan2Key, team); err != nil {
+		t.Fatalf("\n error getting defending clan %s", err)
+	}
+	if err := Connect(c, declareStr, team.ClanID); err != nil {
 		t.Fatalf("\n error connecting to clan %s", err)
 	}
 
-	connQuery := datastore.NewQuery("ClanConnection").Ancestor(clan1Key)
-	var connKey *datastore.Key
-	for prIt := connQuery.Run(c); ; {
-		var connection ClanConnection
-		cKey, err := prIt.Next(&connection)
-		if err == datastore.Done {
-			break
-		}
-		if err != nil {
-			t.Fatalf("error loading profile %s", err)
-		}
-		t.Logf("\n connection saved %+v", connection)
-		connKey = cKey
-	}
-
-	if err := DisConnect(c, declareStr, connKey.Encode()); err != nil {
+	if err := DisConnect(c, declareStr, team.ClanID); err != nil {
 		t.Logf("\n error closing connection %s", err)
-	}
-
-	connQuery2 := datastore.NewQuery("ClanConnection").Ancestor(clan1Key)
-	for prIt_ := connQuery2.Run(c); ; {
-		var connection ClanConnection
-		_, err := prIt_.Next(&connection)
-		if err == datastore.Done {
-			break
-		}
-		if err != nil {
-			t.Fatalf("error loading profile %s", err)
-		}
-		t.Logf("\n connection %+v", connection)
 	}
 
 }
@@ -566,7 +582,7 @@ func TestPublicStatus(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	clanKey := datastore.NewKey(c, "Clan", clanGuid, 0, nil)
 	clanStr := clanKey.Encode()
-	clan := new(PublicClan)
+	clan := new(Clan)
 	if err := PublicStatus(c, clanStr, "1", clan); err != nil {
 		t.Fatalf("\n error status clan %s", err)
 	}

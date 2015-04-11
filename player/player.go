@@ -92,7 +92,6 @@ type PlayerProgram struct {
 }
 
 type Player struct {
-	EncodedKey       string                        `datastore:"-" json:"key"`
 	DbKey            *datastore.Key                `datastore:"-" json:"-"`
 	Cps              int64                         `json:"cps"`
 	Aps              int64                         `json:"aps"`
@@ -120,7 +119,7 @@ type Player struct {
 	AvatarKey        appengine.BlobKey             `json:"-"`
 	Avatar           string                        `json:"avatar"`
 	AvatarThumb      string                        `datastore:"-" json:"avatar_thumb"`
-	PlayerID         int64                         `json:"player_id"`
+	ID               int64                         `json:"player_id"`
 	Status           int64                         `json:"-"`
 	StatusName       string                        `json:"status" datastore:"-"`
 	AccessName       string                        `json:"type" datastore:"-"`
@@ -230,6 +229,9 @@ func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 	if value > max {
 		value = max
 	}
+	if value < 0 {
+		value = 0
+	}
 	return value, updated
 }
 
@@ -248,7 +250,7 @@ func Login(c appengine.Context, cr Authentication) (string, error) {
 	if err := bcrypt.CompareHashAndPassword(iplayer.Pass, []byte(cr.Password)); err != nil {
 		return "", err
 	}
-	tokenString, err := utils.CreateTokenString(playerKey.Encode())
+	tokenString, err := utils.CreateTokenString(c, playerKey.Encode())
 	if err != nil {
 		return "", err
 	}
@@ -259,7 +261,7 @@ func KeyByID(c appengine.Context, id int64) (*datastore.Key, error) {
 	k := fmt.Sprintf("%d", id)
 	rk := new(datastore.Key)
 	if !cache.Get(c, k, rk) {
-		q := datastore.NewQuery("Player").Filter("PlayerID =", id).KeysOnly().Limit(1)
+		q := datastore.NewQuery("Player").Filter("ID =", id).KeysOnly().Limit(1)
 		result := make([]Player, 1, 1)
 		keys, err := q.GetAll(c, &result)
 		if err != nil {
@@ -486,7 +488,7 @@ func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
 	player.Nick = cr.Nick
 	player.Access = ADMIN
 	player.Email = cr.Email
-	player.PlayerID = cnt
+	player.ID = cnt
 	player.Status = LIVE
 	var errc error
 	player.Pass, errc = bcrypt.GenerateFromPassword([]byte(cr.Password), bcrypt.DefaultCost)
@@ -501,7 +503,7 @@ func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
 		}
 		return "", nil, err
 	}
-	tokenString, err := utils.CreateTokenString(playerKey.Encode())
+	tokenString, err := utils.CreateTokenString(c, playerKey.Encode())
 	if err != nil {
 		return "", nil, err
 	}

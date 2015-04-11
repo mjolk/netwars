@@ -170,7 +170,7 @@ func CreateOrUpdate(c appengine.Context, playerKeyStr string, message Message) e
 		nmssg.Content = message.Content
 		nmssg.Subject = message.Subject
 		nmssg.PlayerName = iplayer.Nick
-		nmssg.PlayerID = iplayer.PlayerID
+		nmssg.PlayerID = iplayer.ID
 		nmssg.Access = AccessType[message.AccessName]
 		nmssg.MessageID = <-idCnt
 	}

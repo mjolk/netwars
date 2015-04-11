@@ -210,7 +210,6 @@ func (event *Event) Push() {
 }
 
 func Func(c appengine.Context, events []*Event) error {
-
 	evCnt := len(events)
 	if evCnt > 0 {
 		cntCh := make(chan int64, 1)
@@ -387,7 +386,6 @@ func (e Event) NotifyPlayer(c appengine.Context, notifCh chan<- *taskqueue.Task,
 }
 
 func (e Event) Notify(c appengine.Context, readyCh chan<- int) {
-	c.Debugf("notifications for event: %+v \n", e)
 	notifs := make([]Notification, 0, 20)
 	playerNotifyCh := make(chan *taskqueue.Task)
 	var chCnt int64

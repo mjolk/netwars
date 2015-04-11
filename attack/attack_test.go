@@ -496,11 +496,19 @@ func TestAttackWithClan(t *testing.T) {
 		t.Fatalf(" bad clan name or clan tag \n")
 	}
 	targetClanKey := datastore.NewKey(c, "Clan", clanStr, 0, nil)
-	if err := clan.Connect(c, attackerStr, targetClanKey.Encode()); err != nil {
+	targetClanKey0 := datastore.NewKey(c, "Clan", aClanStr, 0, nil)
+	time.Sleep(1 * time.Second)
+	defTeam := new(clan.Clan)
+	attTeam := new(clan.Clan)
+	if err := datastore.GetMulti(c, []*datastore.Key{targetClanKey, targetClanKey0},
+		[]interface{}{defTeam, attTeam}); err != nil {
+		t.Fatalf("\n error getting defending clan %s", err)
+	}
+	if err := clan.Connect(c, attackerStr, defTeam.ClanID); err != nil {
 		t.Fatalf("error connecting to clan: %s", err)
 	}
-	targetClanKey0 := datastore.NewKey(c, "Clan", aClanStr, 0, nil)
-	if err := clan.Connect(c, defenderStr, targetClanKey0.Encode()); err != nil {
+
+	if err := clan.Connect(c, defenderStr, attTeam.ClanID); err != nil {
 		t.Fatalf("error connecting to clan: %s", err)
 	}
 	if err := setupPrograms(c); err != nil {

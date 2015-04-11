@@ -10,13 +10,13 @@ func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request) {
 	message := Message{}
 	c := appengine.NewContext(r)
 	if err := utils.DecodeJsonBody(r, &message); err != nil {
-		res := utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res := utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	playerStr := utils.Pkey(r)
 	if err := CreateOrUpdate(c, playerStr, message); err != nil {
-		res := utils.JSONResult{Success: false, Error: err.Error()}
+		res := utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	}
 }
@@ -28,9 +28,9 @@ func ListPublicBoards(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	boards, err := PublicBoards(c, pkey, cursor)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: boards}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
 	}
 	res.JSONf(w)
 }
@@ -42,9 +42,9 @@ func ListClanBoards(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	boards, err := ClanBoards(c, pkey, cursor)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: boards}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
 	}
 	res.JSONf(w)
 }
@@ -71,9 +71,9 @@ func list(w http.ResponseWriter, r *http.Request, tpe string) {
 	var res utils.JSONResult
 	messages, err := Messages(c, tpe, pkey, key, ckey)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: messages}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: messages}
 	}
 	res.JSONf(w)
 }

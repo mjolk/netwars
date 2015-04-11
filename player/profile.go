@@ -54,7 +54,6 @@ var PlayerType = map[string]int64{
 }
 
 type PublicPlayer struct {
-	EncodedKey       string                        `datastore:"-" json:"key"`
 	DbKey            *datastore.Key                `datastore:"-" json:"-"`
 	Cps              int64                         `json:"-"`
 	Aps              int64                         `json:"aps"`
@@ -128,7 +127,7 @@ type Profile struct {
 	StatusName     string  `json:"status"`
 	Avatar         string  `json:"-"`
 	AvatarThumb    string  `json:"avatar"`
-	PlayerID       int64   `json:"player_id"`
+	ID             int64   `json:"player_id"`
 	ClanTag        string  `json:"clan_tag"`
 	Access         int64   `json:"-"`
 	AccessName     string  `json:"type"`
@@ -209,18 +208,18 @@ func Public(c appengine.Context, playerStr string, playerIdStr string, iplayer *
 
 func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, error) {
 	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
-		"Avatar", "PlayerID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
+		"Avatar", "ID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	iplayer := new(Player)
 	playerKey, err := Get(c, pkeyStr, iplayer)
 	if err != nil {
 		return PlayerList{}, err
 	}
 	if len(rangeStr) > 0 {
-		rangeBool, err := strconv.ParseBool(rangeStr)
+		rnge, err := strconv.ParseInt(rangeStr, 10, 64)
 		if err != nil {
 			return PlayerList{}, err
 		}
-		if rangeBool {
+		if rnge > 0 {
 			rangeLo, rangeHi := iplayer.Range()
 			q = q.Filter("BandwidthUsage >", rangeLo).
 				Filter("BandwidthUsage <", rangeHi)

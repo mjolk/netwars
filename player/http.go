@@ -13,13 +13,13 @@ func EditProfile(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &update); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	playerStr := utils.Pkey(r)
 	if err := UpdateProfile(c, playerStr, update); err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	}
 }
@@ -29,17 +29,17 @@ func CreatePlayer(w http.ResponseWriter, r *http.Request) {
 	cr := Creation{}
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &cr); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	enckey, errmap, err := Create(c, cr)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else if len(errmap) > 0 {
-		res = utils.JSONResult{Success: false, Error: fmt.Sprint("errmap: %+v", errmap)}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusConflict, Error: fmt.Sprint("errmap: %+v", errmap)}
 	} else {
-		res = utils.JSONResult{Success: true, Result: enckey}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: enckey}
 
 	}
 	res.JSONf(w)
@@ -53,9 +53,9 @@ func GetPlayerList(w http.ResponseWriter, r *http.Request) {
 	list, err := List(c, playerKey, attackRange, cur)
 	var res utils.JSONResult
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: list}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: list}
 	}
 	res.JSONf(w)
 }
@@ -66,9 +66,9 @@ func StatusPlayer(w http.ResponseWriter, r *http.Request) {
 	iplayer := new(Player)
 	var res utils.JSONResult
 	if err := Tstatus(c, playerStr, iplayer); err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: iplayer}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: iplayer}
 	}
 	res.JSONf(w)
 }
@@ -81,9 +81,9 @@ func PublicStatusPlayer(w http.ResponseWriter, r *http.Request) {
 	err := Public(c, playerStr, playerIdStr, iplayer)
 	var res utils.JSONResult
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: iplayer}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: iplayer}
 	}
 	res.JSONf(w)
 }
@@ -92,7 +92,7 @@ func AllocatePrograms(w http.ResponseWriter, r *http.Request) {
 	al := Allocation{}
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &al); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
@@ -100,7 +100,7 @@ func AllocatePrograms(w http.ResponseWriter, r *http.Request) {
 	playerStr := utils.Pkey(r)
 	if err := Allocate(c, playerStr, al); err != nil {
 		c.Debugf("error allocating %s \n", err)
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	}
 }
@@ -109,16 +109,16 @@ func AuthenticatePlayer(w http.ResponseWriter, r *http.Request) {
 	al := Authentication{}
 	var res utils.JSONResult
 	if err := utils.DecodeJsonBody(r, &al); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	c := appengine.NewContext(r)
 	if token, err := Login(c, al); err != nil {
 		c.Debugf("error login %s \n", err)
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: token, Error: err.Error()}
+		res = utils.JSONResult{Success: true, Result: token, StatusCode: http.StatusOK}
 	}
 	res.JSONf(w)
 }
@@ -127,14 +127,14 @@ func DeallocatePrograms(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	al := Allocation{}
 	if err := utils.DecodeJsonBody(r, &al); err != nil {
-		res = utils.JSONResult{Success: false, EntityError: true, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	playerStr := utils.Pkey(r)
 	c := appengine.NewContext(r)
 	if err := Deallocate(c, playerStr, al); err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	}
 }
@@ -144,18 +144,18 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	res := utils.JSONResult{}
 	blobs, _, err := blobstore.ParseUpload(r)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
 		file := blobs["avatar"]
 		if len(file) == 0 {
-			res = utils.JSONResult{Success: false, Error: "No Image Uploaded"}
+			res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: "No Image Uploaded"}
 		} else {
 			img := file[0]
 			if utils.IsNotImage(img) {
-				res = utils.JSONResult{Success: false, Error: "No Image Uploaded"}
+				res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: "No Image Uploaded"}
 			} else {
 				if err := UpdateAvatar(c, utils.Pkey(r), img); err != nil {
-					res = utils.JSONResult{Success: false, Error: err.Error()}
+					res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 				}
 			}
 		}
@@ -172,9 +172,9 @@ func EditAvatar(w http.ResponseWriter, r *http.Request) {
 	uploadURL, err := blobstore.UploadURL(c, "/players/avatar", nil)
 	var res utils.JSONResult
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, Result: uploadURL.String()}
+		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: uploadURL.String()}
 	}
 	res.JSONf(w)
 }
@@ -186,9 +186,9 @@ func PlayerTracker(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	tracker, err := Tracker(c, playerKey, clanKey)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	}
-	res = utils.JSONResult{Success: true, Result: tracker}
+	res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: tracker}
 	res.JSONf(w)
 }
 
@@ -199,9 +199,9 @@ func LocalEvents(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	events, err := Events(c, playerKey, "Player", cursor)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	}
-	res = utils.JSONResult{Success: true, Result: events}
+	res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: events}
 	res.JSONf(w)
 }
 
@@ -212,8 +212,8 @@ func GlobalEvents(w http.ResponseWriter, r *http.Request) {
 	var res utils.JSONResult
 	events, err := Events(c, playerKey, "Clan", cursor)
 	if err != nil {
-		res = utils.JSONResult{Success: false, Error: err.Error()}
+		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	}
-	res = utils.JSONResult{Success: true, Result: events}
+	res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: events}
 	res.JSONf(w)
 }

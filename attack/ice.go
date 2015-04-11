@@ -50,6 +50,10 @@ func Ice(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, err
 		<-playerStCh
 		attackEvent := NewAttackEvent(cfg.AttackType, event.OUT, attacker, defender)
 		defenseEvent := NewAttackEvent(cfg.AttackType, event.IN, defender, attacker)
+		if attacker.ActiveMemory < 4 {
+			return errors.New("not enough active memory")
+		}
+		attackEvent.Memory = 4
 		//TODO check attacker status
 		warCh := make(chan int, 1)
 		if attacker.ClanKey != nil && defender.ClanKey != nil {
@@ -83,17 +87,15 @@ func Ice(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, err
 		if err != nil {
 			return err
 		}
-		c.Debugf("result : %+v \n", result)
 		attackEvent.Result = result.Success
 		defenseEvent.Result = !result.Success
 		var defInfectKey *datastore.Key
 		defInfectProg := new(player.PlayerProgram)
 		var attInfectKey *datastore.Key
 		attInfectProg := new(player.PlayerProgram)
-		attacker.Memory -= 4
-		attacker.ActiveMemory -= 4
+		attacker.Memory -= attackEvent.Memory
+		attacker.ActiveMemory -= attackEvent.Memory
 		war := <-warCh
-		attackEvent.Memory = 4
 		keys := []*datastore.Key{attackerKey, defenderKey}
 		models := []interface{}{attacker, defender}
 		if result.Success {
@@ -110,7 +112,7 @@ func Ice(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, err
 			defInfectKey = datastore.NewKey(c, "PlayerProgram", defKeyName, 0, defenderKey)
 			defInfectProg = &player.PlayerProgram{
 				Program:    *infectProg,
-				Source:     attacker.Name,
+				Source:     attacker.Nick,
 				Key:        defInfectKey,
 				Amount:     infectProg.InfectAmount,
 				ProgramKey: attackProgram.PlayerProgram.Infect,

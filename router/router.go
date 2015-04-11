@@ -44,7 +44,7 @@ func routeVars(name string) []string {
 		if strings.Contains(varName, "id") {
 			getVars[cntr] = "2343"
 		} else if strings.Contains(varName, "bool") {
-			getVars[cntr] = "true"
+			getVars[cntr] = "0"
 		} else {
 			getVars[cntr] = KeyStr
 		}
@@ -98,7 +98,7 @@ type Routes []Route
 var jsonheader = []string{"Accept", "application/json; charset=UTF-8"}
 
 func NewRouter() *mux.Router {
-	r := mux.NewRouter().StrictSlash(true)
+	r := mux.NewRouter()
 	r.HandleFunc("/discover", Discover).Methods("GET")
 	for prefix, routes := range API {
 		//check multiple paths (optional variables require multiple paths (routes) to be
