@@ -101,10 +101,10 @@ type Invite struct {
 //parent clan
 type ClanConnection struct {
 	Player     int64     `datastore:",noindex" json:"-"` //clan leadership initiating connection, blame ...
-	Source     int64     `json:"-"`
-	SourceName string    `json:"attacker"`
-	TargetName string    `json:"defender"`
-	Target     int64     `json:"-"` //target clan
+	Source     int64     `json:"attacker"`
+	SourceName string    `json:"attacker_name"`
+	TargetName string    `json:"defender_name"`
+	Target     int64     `json:"defender"` //target clan
 	Created    time.Time `json:"created_on"`
 	Expires    time.Time `json:"expires"` //lock expiration
 	Expired    bool      `json:"expired"`
