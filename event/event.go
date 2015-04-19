@@ -345,7 +345,6 @@ func incrementTracker(c appengine.Context, pl string) error {
 }
 
 func (e Event) NotifyPlayer(c appengine.Context, notifCh chan<- *taskqueue.Task, key *datastore.Key) {
-	c.Debugf("notify payer --------\n")
 	localTrackerCh := make(chan int)
 	clanNotify := false
 	if key != nil {

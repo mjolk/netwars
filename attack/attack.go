@@ -137,14 +137,13 @@ func (window *AttackWindow) AddReceiver(atype int64, a *AttackEventProgram) {
 		frame.Window = window
 		window.BattleMap[atype] = frame
 	}
-	if len(window.UpdatedKeys) > 0 {
-		for _, key := range window.UpdatedKeys {
-			if key.Equal(a.PlayerProgram.DbKey) {
+	if len(window.Updated) > 0 {
+		for _, update := range window.Updated {
+			if update.PlayerProgram.DbKey.Equal(a.PlayerProgram.DbKey) {
 				return
 			}
 		}
 	}
-	window.UpdatedKeys = append(window.UpdatedKeys, a.PlayerProgram.DbKey)
 	window.Updated = append(window.Updated, a)
 }
 
@@ -164,7 +163,7 @@ func (window *AttackWindow) Render() {
 		frame.Render()
 	}
 	if len(window.Updated) > 0 {
-		for i, update := range window.Updated {
+		for _, update := range window.Updated {
 			if update.Amount > 0 { // remember Amount is in this case total amount lost programs
 				window.ToUpdate = append(window.ToUpdate, update.PlayerProgram)
 				window.DefenseEvent.EventPrograms = append(window.DefenseEvent.EventPrograms, *update.EventProgram)
@@ -172,11 +171,8 @@ func (window *AttackWindow) Render() {
 				ae = *update.EventProgram
 				ae.Owned = false
 				window.AttackEvent.EventPrograms = append(window.AttackEvent.EventPrograms, ae)
-
-			} else {
-				window.UpdatedKeys = append(window.UpdatedKeys[:i], window.UpdatedKeys[i+1:]...)
+				window.UpdatedKeys = append(window.UpdatedKeys, update.PlayerProgram.DbKey)
 			}
-
 		}
 	}
 }
@@ -341,7 +337,7 @@ func NewAttackEvent(t int64, dir int64, player, target *player.Player) *AttackEv
 }
 
 func Attack(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, error) {
-	c.Debugf("running attack  cfg: %+v<<<\n", cfg)
+	c.Debugf("running attack  cfg: %+v<<<\n real balanced atype %d", cfg, BAL)
 	attackerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return AttackEvent{}, err
@@ -443,6 +439,8 @@ func Attack(c appengine.Context, playerStr string, cfg AttackCfg) (AttackEvent, 
 		models := []interface{}{attacker, defender}
 		keys = append(keys, append(attack.UpdatedKeys, defense.UpdatedKeys...)...)
 		models = append(models, append(attack.ToUpdate, defense.ToUpdate...)...)
+		c.Debugf("KEYS : %+v", keys)
+		c.Debugf("MODELS : %+v", models)
 		if _, err := datastore.PutMulti(c, keys, models); err != nil {
 			return err
 		}

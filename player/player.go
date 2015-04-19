@@ -157,6 +157,15 @@ func NewPlayer() *Player {
 	return p
 }
 
+func (p *Player) NickName() (nick string) {
+	if p.ClanKey != nil {
+		nick = fmt.Sprintf("%d <%s> %s", p.ID, p.ClanTag, p.Nick)
+	} else {
+		nick = fmt.Sprintf("%d %s", p.ID, p.Nick)
+	}
+	return nick
+}
+
 func (pp *PlayerProgram) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(pp, c); err != nil {
 		return err
@@ -192,8 +201,8 @@ func (p *Player) Load(c <-chan datastore.Property) error {
 	if len(p.Avatar) > 0 {
 		p.AvatarThumb = fmt.Sprintf("%s=s%d", p.Avatar, THUMBSIZE)
 	}
-	if len(p.ClanTag) > 0 {
-		p.Nick = fmt.Sprintf("<%s> %s", p.ClanTag, p.Nick)
+	if p.ClanKey != nil {
+		p.EncodedClan = p.ClanKey.Encode()
 	}
 	p.Member = MemberName[p.MemberType]
 	p.AccessName = PlayerTypeName[p.Access]

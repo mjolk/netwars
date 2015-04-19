@@ -6,7 +6,6 @@ import (
 	"errors"
 	"math"
 	"mj0lk.be/netwars/event"
-	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
 	"time"
 )
@@ -106,7 +105,7 @@ func Allocate(c appengine.Context, playerStr string, alloc Allocation) error {
 			Cycles:            cycles,
 			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		if err := event.Send(c, []*event.Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, event.Func); err != nil {
 			return err
 		}
 		return nil
@@ -171,27 +170,9 @@ func Deallocate(c appengine.Context, playerKeyStr string, alloc Allocation) erro
 			Cycles:            cycles,
 			EventPrograms:     []event.EventProgram{event.EventProgram{Name: pProg.Name, Amount: iAmount, Owned: true}},
 		}
-		if err := event.Send(c, []*event.Event{e}, AllocateEvent); err != nil {
+		if err := event.Send(c, []*event.Event{e}, event.Func); err != nil {
 			return err
 		}
 		return nil
 	}, nil)
-}
-
-func AllocateEvent(c appengine.Context, events []*event.Event) error {
-	e := events[0]
-	cntCh := make(chan int64)
-	go event.NewEventID(c, cntCh)
-	e.Result = true
-	leGuid, err := guid.GenUUID()
-	if err != nil {
-		return err
-	}
-	localId := datastore.NewKey(c, "Event", leGuid, 0, nil)
-	e.ID = <-cntCh
-	if _, err := datastore.Put(c, localId, e); err != nil {
-		c.Debugf("error saving event %s \n", err)
-		return err
-	}
-	return nil
 }
