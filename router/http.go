@@ -2,41 +2,176 @@ package router
 
 import (
 	"appengine"
-	"html/template"
+	"appengine/blobstore"
+	"encoding/json"
+	"errors"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/julienschmidt/httprouter"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"strings"
+	"time"
 )
 
-type Discovery struct {
-	Description string
-	Prefix      string
-	Urls        []string
-	Method      string
-	Request     template.JS
-	Response    template.JS
-	Auth        bool
+var (
+	ImageTypes = []string{
+		"image/bmp",
+		"image/jpeg",
+		"image/png",
+		"image/gif",
+		"image/tiff",
+		"image/x-icon",
+	}
+	NoAccess     = "No Access"
+	certificates []*appengine.Certificate
+)
+
+const (
+	JWTSECRET = "blalxdjbvvszkcyh56^b-=9if%=h1e%$ld=@4(js50t!$ld*a@5vcu(=2d0jxvxkbgtnhiuk"
+	READLIMIT = 1048576
+	TTL       = 168
+)
+
+type JSONResult struct {
+	Success    bool        `json:"-"`
+	StatusCode int         `json:"-"`
+	Error      string      `json:"error"`
+	Result     interface{} `json:"result, omitempty"`
 }
 
-func Discover(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	rt := NewRouter()
-	discoveries := make([]Discovery, 0)
-	for key, routes := range API {
-		for _, route := range routes {
-			disco := Discovery{}
-			disco.Description = route.Description
-			disco.Prefix = key
-			disco.Urls = route.Urls(rt)
-			disco.Method = route.Method
-			disco.Request = template.JS(route.RequestJSON())
-			disco.Response = template.JS(route.ResponseJSON())
-			disco.Auth = route.Auth
-			//c.Debugf("discovery: %v", disco)
-			discoveries = append(discoveries, disco)
+func (r *JSONResult) JSONf(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if !r.Success {
+		w.WriteHeader(r.StatusCode)
+	}
+	if err := json.NewEncoder(w).Encode(r); err != nil {
+		panic(err)
+	}
+}
+
+func loadCertificates(c appengine.Context) error {
+	certs, err := appengine.PublicCertificates(c)
+	if err != nil {
+		return err
+	}
+	ln := len(certs)
+	certificates = make([]*appengine.Certificate, ln, ln)
+	for k, cert := range certs {
+		certificates[k] = &cert
+	}
+	return nil
+}
+
+func CreateTokenString(c appengine.Context, playerKey string) (string, error) {
+	token := jwt.New(jwt.SigningMethodHS256)
+	if !appengine.IsDevAppServer() {
+		if len(certificates) == 0 {
+			if err := loadCertificates(c); err != nil {
+				return "", err
+			}
+		}
+		token = jwt.New(&SigningMethodAppengine{c})
+	}
+	token.Claims["pkey"] = playerKey
+	// Expire in a week
+	token.Claims["exp"] = time.Now().Add(time.Hour * TTL).Unix()
+	tokenString, err := token.SignedString([]byte(JWTSECRET))
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+
+func DecodeJsonBody(r *http.Request, v interface{}) error {
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, READLIMIT))
+	if err != nil {
+		return err
+	}
+	if err := r.Body.Close(); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ValidateToken(tokenString string) (string, error) {
+	var playerStr string
+	var vErr *jwt.ValidationError
+	var token *jwt.Token
+	if !appengine.IsDevAppServer() {
+		maxTries := len(certificates)
+		for i := 0; i < maxTries; {
+			var err error
+			token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+				cert := certificates[i]
+				return cert.Data, nil
+			})
+			if err != nil {
+				vErr = err.(*jwt.ValidationError)
+				if jwt.ValidationErrorSignatureInvalid == vErr.Errors&jwt.ValidationErrorSignatureInvalid {
+					i++
+					continue
+				}
+			}
+		}
+	} else {
+		var err error
+		token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return []byte(JWTSECRET), nil
+		})
+		if err != nil {
+			vErr = err.(*jwt.ValidationError)
+
 		}
 	}
-	t := template.Must(template.ParseFiles("html_templates/index.tmpl"))
-	err := t.Execute(w, discoveries)
-	if err != nil {
-		c.Errorf("template execution: %s", err)
+
+	if vErr == nil && token.Valid {
+		playerStr = token.Claims["pkey"].(string)
+	} else if vErr != nil {
+		if jwt.ValidationErrorExpired == jwt.ValidationErrorExpired&vErr.Errors {
+			//TODO expired : regenerate???
+			//playerStr = token.Claims["pkey"].(string)
+
+		}
+		return "", errors.New("Invalid token")
 	}
+	return playerStr, nil
+}
+
+func noAccess(w http.ResponseWriter) {
+	res := JSONResult{Success: false, StatusCode: http.StatusUnauthorized, Error: NoAccess}
+	res.JSONf(w)
+}
+
+func Validator(inner AppengineHandler) AppengineHandler {
+	return func(w http.ResponseWriter, r *http.Request, c Context) {
+		if ah := r.Header.Get("Authorization"); ah != "" {
+			// Should be a netwars token
+			if len(ah) > 7 && strings.ToUpper(ah[:7]) == "N3TWARS" {
+				playerStr, err := ValidateToken(ah[7:])
+				if err != nil {
+					noAccess(w)
+				} else {
+					c.User = playerStr
+					inner(w, r, c)
+				}
+			} else {
+				noAccess(w)
+			}
+		} else {
+			noAccess(w)
+		}
+	}
+}
+
+func IsNotImage(data *blobstore.BlobInfo) bool {
+	for _, tpe := range ImageTypes {
+		if data.ContentType == tpe {
+			return false
+		}
+	}
+	return true
 }

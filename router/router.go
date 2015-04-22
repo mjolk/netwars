@@ -1,10 +1,10 @@
 package router
 
 import (
+	"appengine"
 	"bytes"
 	"encoding/json"
-	"github.com/gorilla/mux"
-	"mj0lk.be/netwars/utils"
+	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"strings"
 )
@@ -15,7 +15,57 @@ const (
 	KeyStr    = "agtkZXZ-bjN0d..."
 )
 
-type Router interface {
+var jsonheader = []string{"Accept", "application/json; charset=UTF-8"}
+
+type Routes []Route
+
+type AppengineHandler func(http.ResponseWriter, *http.Request, Context)
+
+type Context struct {
+	appengine.Context
+	User   string
+	Params httprouter.Params
+}
+
+func NewContext(r *http.Request) Context {
+	return Context{appengine.NewContext(r)}
+}
+
+type Router struct {
+	*httprouter.Router
+}
+
+func (r *Router) AppengineHandle(method, path string, handler AppengineHandler) {
+	r.Handle(method, path,
+		func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+			ctx := NewContext(req)
+			ctx.Params = p
+			handler(w, req, ctx)
+		},
+	)
+}
+
+func New() *Router {
+	hr := httprouter.New()
+	hr.RedirectTrailingSlash = false
+	hr.RedirectFixedPath = false
+	r := &Router{hr}
+	r.AppengineHandle("GET", "/discover/", Discover)
+	for prefix, routes := range API {
+		for _, route := range routes {
+			for k, path := range route.Path {
+				handler := route.Handler
+				if route.Auth {
+					handler = Validator(route.Handler)
+				}
+				r.AppengineHandle(route.Method, prefix+path, route.Handler)
+			}
+		}
+	}
+	return r
+}
+
+type Discover interface {
 	Urls() []string
 	ResponseJSON() []byte
 	RequestJSON() []byte
@@ -53,7 +103,7 @@ func routeVars(name string) []string {
 	return getVars
 }
 
-func (r Route) Urls(router *mux.Router) (urls []string) {
+func (r Route) Urls() (urls []string) {
 	for _, name := range r.Name {
 		var rVars []string
 		if strings.Contains(name, ".") {
@@ -91,33 +141,4 @@ func (r Route) ResponseJSON() []byte {
 		return prettyJson(r.Response)
 	}
 	return []byte("{http 200 ok}")
-}
-
-type Routes []Route
-
-var jsonheader = []string{"Accept", "application/json; charset=UTF-8"}
-
-func NewRouter() *mux.Router {
-	r := mux.NewRouter()
-	r.HandleFunc("/discover", Discover).Methods("GET")
-	for prefix, routes := range API {
-		//check multiple paths (optional variables require multiple paths (routes) to be
-		//registered because REST url vars are not optional(in gorillatoolkit))
-		subRouter := r.PathPrefix(prefix).Subrouter()
-		for _, route := range routes {
-			for k, path := range route.Path {
-				handler := route.Handler
-				if route.Auth {
-					handler = utils.Validator(route.Handler)
-				}
-				subRouter.HandleFunc(path, handler).
-					Methods(route.Method).
-					Name(route.Name[k])
-				if len(route.Headers) > 0 {
-					subRouter.Headers(route.Headers...)
-				}
-			}
-		}
-	}
-	return r
 }
