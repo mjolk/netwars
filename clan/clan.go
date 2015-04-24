@@ -221,7 +221,7 @@ func KeyByID(c appengine.Context, id int64) (*datastore.Key, error) {
 	k := fmt.Sprintf("%d", id)
 	rk := new(datastore.Key)
 	if !cache.Get(c, k, rk) {
-		q := datastore.NewQuery("Clan").Filter("ClanID =", id).KeysOnly().Limit(1)
+		q := datastore.NewQuery("Clan").Filter("ID =", id).KeysOnly().Limit(1)
 		result := make([]Clan, 1, 1)
 		keys, err := q.GetAll(c, &result)
 		if err != nil {

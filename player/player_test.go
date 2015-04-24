@@ -6,8 +6,8 @@ import (
 	"appengine/datastore"
 	"errors"
 	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/secure"
 	"mj0lk.be/netwars/testutils"
-	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -88,7 +88,7 @@ func TestUpdateProfile(t *testing.T) {
 		Address:   "PLantin & Moretuslei 2018 Antwerpen",
 		Signature: "Carpe Diem",
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	if err := UpdateProfile(c, playerKeyStr, profileUpdate); err != nil {
 		t.Fatalf("Error updating profile")
 	}
@@ -114,7 +114,7 @@ func setupPlayer(c appengine.Context) (string, error) {
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 
@@ -255,7 +255,7 @@ func TestProfileList(t *testing.T) {
 		t.Fatalf("setup player error: %s", err)
 	}
 	time.Sleep(1 * time.Second)
-	list, err := List(c, playerKeyStr, "false", "")
+	list, err := List(c, playerKeyStr, "0", "")
 	if err != nil {
 		t.Fatalf("error getting public player list: %s", err)
 	}

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"mj0lk.be/netwars/player"
+	"mj0lk.be/netwars/secure"
 	"mj0lk.be/netwars/testutils"
-	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -32,7 +32,7 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 
@@ -117,12 +117,12 @@ func TestInvite(t *testing.T) {
 		t.Fatalf("\nError getting invited player", err)
 	}
 	testutils.PurgeQueue(c, t)
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	testutils.CheckQueue(c, t, 1)
 	testutils.PurgeQueue(c, t)
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		if err != PlayerAlreadyInvitedError {
 			t.Fatalf("Error checking player exists")
 		}
@@ -157,7 +157,7 @@ func TestCancelInvite(t *testing.T) {
 		t.Fatalf("\nError getting invited player", err)
 	}
 	testutils.PurgeQueue(c, t)
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	testutils.CheckQueue(c, t, 1)
@@ -212,7 +212,7 @@ func TestInviteGet(t *testing.T) {
 		t.Fatalf("\nError getting player", err)
 	}
 	testutils.PurgeQueue(c, t)
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	testutils.CheckQueue(c, t, 1)
@@ -251,7 +251,7 @@ func TestJoin(t *testing.T) {
 	if err := datastore.Get(c, inviteePlayerKey, invitedPlayer); err != nil {
 		t.Fatalf("\nError getting player", err)
 	}
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	inviteStr := fmt.Sprintf("%d%d", 1, 2)
@@ -295,7 +295,7 @@ func TestStatus(t *testing.T) {
 	}
 	//clanKey := datastore.NewKey(c, "Clan", clanGuid, 0, nil)
 	//clanStr := clanKey.Encode()
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	inviteStr := fmt.Sprintf("%d%d", 1, 2)
@@ -347,7 +347,7 @@ func TestLeave(t *testing.T) {
 	if err := datastore.Get(c, inviteePlayerKey, invitedPlayer); err != nil {
 		t.Fatalf("\nError getting player", err)
 	}
-	if err := InvitePlayer(c, inviterStr, invitedPlayer.PlayerID); err != nil {
+	if err := InvitePlayer(c, inviterStr, invitedPlayer.ID); err != nil {
 		t.Fatalf("\nError sending invite %s", err)
 	}
 	inviteStr := fmt.Sprintf("%d%d", 1, 2)
@@ -405,7 +405,7 @@ func TestConnection(t *testing.T) {
 	if err := datastore.Get(c, clan2Key, team); err != nil {
 		t.Fatalf("\n error getting defending clan %s", err)
 	}
-	if err := Connect(c, declareStr, team.ClanID); err != nil {
+	if err := Connect(c, declareStr, team.ID); err != nil {
 		t.Fatalf("\n error connecting to clan %s", err)
 	}
 
@@ -439,11 +439,11 @@ func TestCloseConnection(t *testing.T) {
 	if err := datastore.Get(c, clan2Key, team); err != nil {
 		t.Fatalf("\n error getting defending clan %s", err)
 	}
-	if err := Connect(c, declareStr, team.ClanID); err != nil {
+	if err := Connect(c, declareStr, team.ID); err != nil {
 		t.Fatalf("\n error connecting to clan %s", err)
 	}
 
-	if err := DisConnect(c, declareStr, team.ClanID); err != nil {
+	if err := DisConnect(c, declareStr, team.ID); err != nil {
 		t.Logf("\n error closing connection %s", err)
 	}
 
@@ -484,7 +484,7 @@ func TestPromoteOrDemote(t *testing.T) {
 	if _, err := datastore.Put(c, promoteKey, promotePlayer); err != nil {
 		t.Fatalf("\n error saving promotePlayer %s", err)
 	}
-	if err := PromoteOrDemote(c, initStr, promotePlayer.PlayerID, player.LIEUTENANT); err != nil {
+	if err := PromoteOrDemote(c, initStr, promotePlayer.ID, player.LIEUTENANT); err != nil {
 		t.Fatalf("\n error promoting player %s", err)
 	}
 }
@@ -525,7 +525,7 @@ func TestKick(t *testing.T) {
 	if _, err := datastore.Put(c, kickKey, kickPlayer); err != nil {
 		t.Fatalf("\n error saving player %s", err)
 	}
-	if err := Kick(c, initStr, kickPlayer.PlayerID); err != nil {
+	if err := Kick(c, initStr, kickPlayer.ID); err != nil {
 		t.Fatalf("\n error kicking player %s", err)
 	}
 }
@@ -604,7 +604,7 @@ func TestClanList(t *testing.T) {
 		t.Fatalf("\nError creating clan %s, guid %s", err, clanGuid)
 	}
 	time.Sleep(1 * time.Second)
-	list, err := List(c, playerStr, "false", "")
+	list, err := List(c, playerStr, "0", "")
 	if err != nil {
 		t.Fatalf("error getting public player list: %s", err)
 	}

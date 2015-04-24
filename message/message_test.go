@@ -8,7 +8,7 @@ import (
 	//"fmt"
 	"mj0lk.be/netwars/clan"
 	"mj0lk.be/netwars/player"
-	"mj0lk.be/netwars/utils"
+	"mj0lk.be/netwars/secure"
 	"testing"
 	"time"
 )
@@ -30,7 +30,7 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 

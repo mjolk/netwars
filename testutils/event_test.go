@@ -8,7 +8,7 @@ import (
 	"mj0lk.be/netwars/clan"
 	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/player"
-	"mj0lk.be/netwars/utils"
+	"mj0lk.be/netwars/secure"
 	"testing"
 )
 
@@ -31,7 +31,7 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	playerKey, _ := datastore.DecodeKey(playerKeyStr)
 	notif := event.PlayerNotification{
 		EventType:        "Invite",

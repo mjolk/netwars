@@ -1,79 +1,67 @@
 package message
 
 import (
-	"appengine"
-	"mj0lk.be/netwars/utils"
+	"mj0lk.be/netwars/app"
 	"net/http"
 )
 
-func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request) {
+func CreateOrUpdateMessage(w http.ResponseWriter, r *http.Request, c app.Context) {
 	message := Message{}
-	c := appengine.NewContext(r)
-	if err := utils.DecodeJsonBody(r, &message); err != nil {
-		res := utils.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
+	if err := app.DecodeJsonBody(r, &message); err != nil {
+		res := app.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
-	playerStr := utils.Pkey(r)
-	if err := CreateOrUpdate(c, playerStr, message); err != nil {
-		res := utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
+	if err := CreateOrUpdate(c, c.User, message); err != nil {
+		res := app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	}
 }
 
-func ListPublicBoards(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	pkey := utils.Pkey(r)
-	cursor := utils.Var(r, "cursor")
-	var res utils.JSONResult
-	boards, err := PublicBoards(c, pkey, cursor)
+func ListPublicBoards(w http.ResponseWriter, r *http.Request, c app.Context) {
+	var res app.JSONResult
+	boards, err := PublicBoards(c, c.User, c.Param("cursor_key"))
 	if err != nil {
-		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
+		res = app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
+		res = app.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
 	}
 	res.JSONf(w)
 }
 
-func ListClanBoards(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	pkey := utils.Pkey(r)
-	cursor := utils.Var(r, "cursor")
-	var res utils.JSONResult
-	boards, err := ClanBoards(c, pkey, cursor)
+func ListClanBoards(w http.ResponseWriter, r *http.Request, c app.Context) {
+	var res app.JSONResult
+	boards, err := ClanBoards(c, c.User, c.Param("cursor_key"))
 	if err != nil {
-		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
+		res = app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
+		res = app.JSONResult{Success: true, StatusCode: http.StatusOK, Result: boards}
 	}
 	res.JSONf(w)
 }
 
-func ListThreads(w http.ResponseWriter, r *http.Request) {
-	list(w, r, "threads")
+func ListThreads(w http.ResponseWriter, r *http.Request, c app.Context) {
+	list(w, r, "threads", c)
 }
 
-func ListMessages(w http.ResponseWriter, r *http.Request) {
-	list(w, r, "messages")
+func ListMessages(w http.ResponseWriter, r *http.Request, c app.Context) {
+	list(w, r, "messages", c)
 }
 
-func list(w http.ResponseWriter, r *http.Request, tpe string) {
-	c := appengine.NewContext(r)
-	pkey := utils.Pkey(r)
+func list(w http.ResponseWriter, r *http.Request, tpe string, c app.Context) {
 	var key string
 	switch tpe {
 	case "threads":
-		key = utils.Var(r, "bkey")
+		key = c.Param("b_key")
 	case "messages":
-		key = utils.Var(r, "tkey")
+		key = c.Param("t_key")
 	}
-	ckey := utils.Var(r, "cursor")
-	var res utils.JSONResult
-	messages, err := Messages(c, tpe, pkey, key, ckey)
+	var res app.JSONResult
+	messages, err := Messages(c, tpe, c.User, key, c.Param("cursor_key"))
 	if err != nil {
-		res = utils.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
+		res = app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else {
-		res = utils.JSONResult{Success: true, StatusCode: http.StatusOK, Result: messages}
+		res = app.JSONResult{Success: true, StatusCode: http.StatusOK, Result: messages}
 	}
 	res.JSONf(w)
 }

@@ -8,8 +8,8 @@ import (
 	"mj0lk.be/netwars/clan"
 	"mj0lk.be/netwars/player"
 	"mj0lk.be/netwars/program"
+	"mj0lk.be/netwars/secure"
 	"mj0lk.be/netwars/testutils"
-	"mj0lk.be/netwars/utils"
 	"testing"
 	"time"
 )
@@ -204,7 +204,7 @@ func setupPlayer(c appengine.Context, nick string, email string) (string, error)
 	if usererr != nil {
 		return "", errors.New("unexpected user error")
 	}
-	playerKeyStr, _ := utils.ValidateToken(tokenStr)
+	playerKeyStr, _ := secure.ValidateToken(tokenStr)
 	return playerKeyStr, nil
 }
 
@@ -309,7 +309,7 @@ func TestSpy(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     INT,
-		Target:         defender.PlayerID,
+		Target:         defender.ID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
@@ -364,7 +364,7 @@ func TestIce(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     ICE,
-		Target:         defender.PlayerID,
+		Target:         defender.ID,
 		ActivePrograms: attackPrograms,
 	}
 	if err := player.Status(c, defenderStr, defender); err != nil {
@@ -455,7 +455,7 @@ func TestAttack(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     BW,
-		Target:         defender.PlayerID,
+		Target:         defender.ID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)
@@ -504,11 +504,11 @@ func TestAttackWithClan(t *testing.T) {
 		[]interface{}{defTeam, attTeam}); err != nil {
 		t.Fatalf("\n error getting defending clan %s", err)
 	}
-	if err := clan.Connect(c, attackerStr, defTeam.ClanID); err != nil {
+	if err := clan.Connect(c, attackerStr, defTeam.ID); err != nil {
 		t.Fatalf("error connecting to clan: %s", err)
 	}
 
-	if err := clan.Connect(c, defenderStr, attTeam.ClanID); err != nil {
+	if err := clan.Connect(c, defenderStr, attTeam.ID); err != nil {
 		t.Fatalf("error connecting to clan: %s", err)
 	}
 	if err := setupPrograms(c); err != nil {
@@ -568,7 +568,7 @@ func TestAttackWithClan(t *testing.T) {
 	}
 	attackCfg := AttackCfg{
 		AttackType:     BW,
-		Target:         defender.PlayerID,
+		Target:         defender.ID,
 		ActivePrograms: attackPrograms,
 	}
 	testutils.PurgeQueue(c, t)

@@ -57,7 +57,7 @@ type PublicPlayer struct {
 	DbKey            *datastore.Key                `datastore:"-" json:"-"`
 	Cps              int64                         `json:"-"`
 	Aps              int64                         `json:"aps"`
-	EncodedClan      string                        `datastore:"-" json:"clan_member"`
+	EncodedClan      string                        `datastore:"-" json:"-"`
 	ClanKey          *datastore.Key                `json:"-"`
 	Cycles           int64                         `datastore:"-" json:"-"`
 	Memory           int64                         `datastore:"-" json:"-"`
@@ -81,7 +81,7 @@ type PublicPlayer struct {
 	AvatarKey        appengine.BlobKey             `json:"-"`
 	Avatar           string                        `json:"avatar"`
 	AvatarThumb      string                        `datastore:"-" json:"avatar_thumb"`
-	PlayerID         int64                         `json:"player_id"`
+	ID               int64                         `json:"player_id"`
 	Status           int64                         `json:"-"`
 	StatusName       string                        `json:"status" datastore:"-"`
 	AccessName       string                        `json:"-" datastore:"-"`

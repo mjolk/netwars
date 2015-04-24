@@ -11,7 +11,7 @@ import (
 	"mj0lk.be/netwars/event"
 	"mj0lk.be/netwars/guid"
 	"mj0lk.be/netwars/program"
-	"mj0lk.be/netwars/utils"
+	"mj0lk.be/netwars/secure"
 	"regexp"
 	"strconv"
 	"strings"
@@ -259,7 +259,7 @@ func Login(c appengine.Context, cr Authentication) (string, error) {
 	if err := bcrypt.CompareHashAndPassword(iplayer.Pass, []byte(cr.Password)); err != nil {
 		return "", err
 	}
-	tokenString, err := utils.CreateTokenString(c, playerKey.Encode())
+	tokenString, err := secure.CreateTokenString(c, playerKey.Encode())
 	if err != nil {
 		return "", err
 	}
@@ -512,7 +512,7 @@ func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
 		}
 		return "", nil, err
 	}
-	tokenString, err := utils.CreateTokenString(c, playerKey.Encode())
+	tokenString, err := secure.CreateTokenString(c, playerKey.Encode())
 	if err != nil {
 		return "", nil, err
 	}
