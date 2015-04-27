@@ -29,7 +29,7 @@ const (
 	MAXLEADERSHIP = 3
 	MAXINVITES    = 3
 	THUMBSIZE     = 32
-	CLANNAMEREGEX = `^([a-zA-Z0-9]){3,18}$`
+	CLANNAMEREGEX = `^([a-zA-Z0-9 ]){3,18}$`
 	CLANTAGREGEX  = `^([a-zA-Z0-9]){3,4}$`
 	LIMIT         = 100
 )
