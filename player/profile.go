@@ -97,7 +97,7 @@ type PublicPlayer struct {
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"-" datastore:"-"`
 	Tracker          event.Tracker                 `json:"-" datastore:"-"`
-	Pass             []byte                        `json:"-" datastore:"-"`
+	Pass             []byte                        `json:"-"`
 }
 
 func (p *PublicPlayer) Load(c <-chan datastore.Property) error {
