@@ -163,17 +163,22 @@ func ClanInvite(w http.ResponseWriter, r *http.Request, c app.Context) {
 
 func CreateClan(w http.ResponseWriter, r *http.Request, c app.Context) {
 	cr := Creation{}
+	res := app.JSONResult{}
 	if err := app.DecodeJsonBody(r, &cr); err != nil {
-		res := app.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
+		res = app.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 		res.JSONf(w)
 		return
 	}
 	_, errmap, err := Create(c, c.User, cr.Name, cr.Tag)
 	if err != nil {
-		res := app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
+		res = app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 		res.JSONf(w)
 	} else if errmap["clan_name"]+errmap["clan_tag"] > 0 {
-		res := app.JSONResult{Success: false, StatusCode: http.StatusConflict, Result: errmap}
+		if errmap["clan_name"] > 0 {
+			res = app.JSONResult{Success: false, StatusCode: http.StatusConflict, Result: "name error"}
+		} else {
+			res = app.JSONResult{Success: false, StatusCode: http.StatusConflict, Result: "tag error"}
+		}
 		res.JSONf(w)
 	}
 }

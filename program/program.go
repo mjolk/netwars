@@ -55,6 +55,7 @@ type ProgramMap struct {
 
 var memprograms *ProgramMap = &ProgramMap{m: make(map[string]*Program)}
 
+//no need for synchro, data should never change
 func (s *ProgramMap) Get(key string) (*Program, bool) {
 	//s.lock.RLock()
 	//defer s.lock.RUnlock()
@@ -119,7 +120,7 @@ func Load(p *Program) {
 		p.InfectName = p.Infect.StringID()
 	}
 	p.TypeName = ProgramName[p.Type]
-	p.BandwidthUsage = (1 / p.Memory) * float64(p.Cycles)
+	p.BandwidthUsage = float64(p.Cycles / 10) //(1 / p.Memory) * float64(p.Cycles)
 }
 
 func Save(p *Program) {

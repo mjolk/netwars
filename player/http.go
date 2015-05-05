@@ -2,7 +2,6 @@ package player
 
 import (
 	"appengine/blobstore"
-	"fmt"
 	"mj0lk.be/netwars/app"
 	"net/http"
 )
@@ -33,7 +32,11 @@ func CreatePlayer(w http.ResponseWriter, r *http.Request, c app.Context) {
 	if err != nil {
 		res = app.JSONResult{Success: false, StatusCode: http.StatusInternalServerError, Error: err.Error()}
 	} else if len(errmap) > 0 {
-		res = app.JSONResult{Success: false, StatusCode: http.StatusConflict, Error: fmt.Sprint("errmap: %+v", errmap)}
+		if errmap["email"] > 0 {
+			res = app.JSONResult{Success: false, StatusCode: http.StatusConflict, Error: "error mail"}
+		} else {
+			res = app.JSONResult{Success: false, StatusCode: http.StatusConflict, Error: "error nick"}
+		}
 	} else {
 		res = app.JSONResult{Success: true, StatusCode: http.StatusOK, Result: enckey}
 

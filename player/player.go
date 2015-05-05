@@ -135,7 +135,7 @@ type Player struct {
 	Programs         map[int64]*PlayerProgramGroup `json:"-" datastore:"-"`
 	PlayerPrograms   []*PlayerProgramGroup         `json:"programs, omitempty" datastore:"-"`
 	Tracker          event.Tracker                 `json:"tracker" datastore:"-"`
-	Pass             []byte                        `json:"-" datastore:"-"`
+	Pass             []byte                        `json:"-"`
 }
 
 func (p Player) Range() (float64, float64) {
@@ -246,7 +246,7 @@ func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 
 func Login(c appengine.Context, cr Authentication) (string, error) {
 	q := datastore.NewQuery("Player").Filter("Email =", cr.Email).Limit(1)
-	res := make([]Player, 1, 1)
+	var res []Player
 	keys, err := q.GetAll(c, &res)
 	if err != nil {
 		return "", err
