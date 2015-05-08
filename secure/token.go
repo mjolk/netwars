@@ -2,7 +2,7 @@ package secure
 
 import (
 	"appengine"
-	"errors"
+	//"errors"
 	"github.com/dgrijalva/jwt-go"
 	"mj0lk.be/netwars/app"
 	"net/http"
@@ -25,6 +25,7 @@ func loadCertificates(c appengine.Context) error {
 		return err
 	}
 	ln := len(certs)
+	c.Debugf("amount certificates %d", ln)
 	certificates = make([]*appengine.Certificate, ln, ln)
 	for k, cert := range certs {
 		certificates[k] = &cert
@@ -91,7 +92,7 @@ func ValidateToken(tokenString string) (string, error) {
 			//playerStr = token.Claims["pkey"].(string)
 
 		}
-		return "", errors.New("Invalid token")
+		return "", vErr //errors.New("Invalid token")
 	}
 	return playerStr, nil
 }
@@ -103,15 +104,18 @@ func Validator(inner app.EngineHandler) app.EngineHandler {
 			if len(ah) > 7 && strings.ToUpper(ah[:7]) == "N3TWARS" {
 				playerStr, err := ValidateToken(ah[7:])
 				if err != nil {
+					c.Debugf("error validating %s", err)
 					app.NoAccess(w)
 				} else {
 					c.User = playerStr
 					inner(w, r, c)
 				}
 			} else {
+				c.Debugf("no token")
 				app.NoAccess(w)
 			}
 		} else {
+			c.Debugf("no token")
 			app.NoAccess(w)
 		}
 	}

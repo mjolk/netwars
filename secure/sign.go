@@ -4,7 +4,7 @@ import (
 	"appengine"
 	"crypto"
 	"crypto/rsa"
-	"crypto/sha512"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -41,12 +41,12 @@ func (m *SigningMethodAppengine) Verify(signingString, signature string, crt int
 			}
 			if err == nil {
 				if rsaKey, ok := parsedKey.(*rsa.PublicKey); ok {
-					hasher := sha512.New()
+					hasher := sha1.New()
 					hasher.Write([]byte(signingString))
 
-					err = rsa.VerifyPKCS1v15(rsaKey, crypto.SHA512, hasher.Sum(nil), sig)
+					err = rsa.VerifyPKCS1v15(rsaKey, crypto.SHA1, hasher.Sum(nil), sig)
 				} else if cert, ok := parsedKey.(*x509.Certificate); ok {
-					err = cert.CheckSignature(x509.SHA512WithRSA, []byte(signingString), sig)
+					err = cert.CheckSignature(x509.SHA1WithRSA, []byte(signingString), sig)
 				} else {
 					err = errors.New("Key is not a valid RSA public key")
 				}
