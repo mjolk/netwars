@@ -378,7 +378,6 @@ var API = Routes{
 		app.JSONResult{Result: program.Program{}},
 		true,
 	},
-
 	Route{
 		"internal loads all prgrams into datastore",
 		[]string{"/load/programs/"},
@@ -388,4 +387,22 @@ var API = Routes{
 		http.StatusOK,
 		false,
 	},
+	/*Route{
+		"test appengien security stuff",
+		[]string{"/load/token/"},
+		"GET",
+		secure.GetToken,
+		nil,
+		http.StatusOK,
+		false,
+	},
+	Route{
+		"test appengien security stuff",
+		[]string{"/load/token/:token/:keyname/"},
+		"GET",
+		secure.VerifySecure,
+		nil,
+		http.StatusOK,
+		false,
+	},*/
 }

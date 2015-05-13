@@ -2,16 +2,20 @@ package secure
 
 import (
 	"appengine"
-	//"errors"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"github.com/dgrijalva/jwt-go"
 	"mj0lk.be/netwars/app"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 var (
-	certificates []*appengine.Certificate
+	certificates map[string]*x509.Certificate
+	certMutex    sync.RWMutex
 )
 
 const (
@@ -19,16 +23,34 @@ const (
 	TTL       = 168
 )
 
+func getCertificate(key string) (*x509.Certificate, error) {
+	certMutex.RLock()
+	defer certMutex.RUnlock()
+	cert, ok := certificates[key]
+	if !ok {
+		return nil, errors.New("No certificate")
+	}
+	return cert, nil
+}
+
 func loadCertificates(c appengine.Context) error {
-	certs, err := appengine.PublicCertificates(c)
+	appCerts, err := appengine.PublicCertificates(c)
 	if err != nil {
 		return err
 	}
-	ln := len(certs)
-	c.Debugf("amount certificates %d", ln)
-	certificates = make([]*appengine.Certificate, ln, ln)
-	for k, cert := range certs {
-		certificates[k] = &cert
+	certMutex.Lock()
+	defer certMutex.Unlock()
+	certificates = make(map[string]*x509.Certificate)
+	for _, cert := range appCerts {
+		block, _ := pem.Decode(cert.Data)
+		if block == nil {
+			return errors.New("no block")
+		}
+		xcert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return err
+		}
+		certificates[cert.KeyName] = xcert
 	}
 	return nil
 }
@@ -55,38 +77,28 @@ func CreateTokenString(c appengine.Context, playerKey string) (string, error) {
 
 func ValidateToken(tokenString string) (string, error) {
 	var playerStr string
-	var vErr *jwt.ValidationError
+	var err error
 	var token *jwt.Token
-	if !appengine.IsDevAppServer() {
-		maxTries := len(certificates)
-		for i := 0; i < maxTries; {
-			var err error
-			token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				cert := certificates[i]
-				return cert.Data, nil
-			})
-			if err != nil {
-				vErr = err.(*jwt.ValidationError)
-				if jwt.ValidationErrorSignatureInvalid == vErr.Errors&jwt.ValidationErrorSignatureInvalid {
-					i++
-					continue
-				}
-			}
-		}
-	} else {
-		var err error
+	if appengine.IsDevAppServer() {
 		token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return []byte(JWTSECRET), nil
 		})
-		if err != nil {
-			vErr = err.(*jwt.ValidationError)
-
-		}
+	} else {
+		keyIndex := strings.LastIndex(tokenString, ".")
+		keyString := tokenString[keyIndex+1:]
+		tokenString := tokenString[7:keyIndex]
+		token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			cert, err := getCertificate(keyString)
+			if err != nil {
+				return nil, errors.New("no certificate")
+			}
+			return cert, nil
+		})
 	}
-
-	if vErr == nil && token.Valid {
+	if err == nil && token.Valid {
 		playerStr = token.Claims["pkey"].(string)
-	} else if vErr != nil {
+	} else if err != nil {
+		vErr := err.(*jwt.ValidationError)
 		if jwt.ValidationErrorExpired == jwt.ValidationErrorExpired&vErr.Errors {
 			//TODO expired : regenerate???
 			//playerStr = token.Claims["pkey"].(string)
@@ -102,20 +114,17 @@ func Validator(inner app.EngineHandler) app.EngineHandler {
 		if ah := r.Header.Get("Authorization"); ah != "" {
 			// Should be a netwars token
 			if len(ah) > 7 && strings.ToUpper(ah[:7]) == "N3TWARS" {
-				playerStr, err := ValidateToken(ah[7:])
+				playerStr, err := ValidateToken(ah)
 				if err != nil {
-					c.Debugf("error validating %s", err)
 					app.NoAccess(w)
 				} else {
 					c.User = playerStr
 					inner(w, r, c)
 				}
 			} else {
-				c.Debugf("no token")
 				app.NoAccess(w)
 			}
 		} else {
-			c.Debugf("no token")
 			app.NoAccess(w)
 		}
 	}
