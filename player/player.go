@@ -224,6 +224,9 @@ func (p *Player) Save(c chan<- datastore.Property) error {
 func timedResource(src string, interval, amount, max int64) (int64, time.Time) {
 	content := strings.Split(src, TIMEDELIM)
 	value, err := strconv.ParseInt(content[0], 10, 64)
+	if err != nil {
+		panic("unexpected fatal error")
+	}
 	updatedInt, err := strconv.ParseInt(content[1], 10, 64)
 	if err != nil {
 		panic("unexpected fatal error")
@@ -482,34 +485,8 @@ func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
 	if len(cr.Password) < 8 {
 		return "", nil, errors.New("password needs a minimum of 8 characters")
 	}
-	keyName, err := guid.GenUUID()
+	playerKey, err := createPlayer(c, cr.Nick, cr.Email, cr.Password)
 	if err != nil {
-		return "", nil, err
-	}
-	cnt, err := counter.IncrementAndCount(c, "Player")
-	if err != nil {
-		return "", nil, err
-	}
-	playerKey := datastore.NewKey(c, "Player", keyName, 0, nil)
-	trackerKey := datastore.NewKey(c, "Tracker", keyName, 0, nil)
-	tracker := new(event.Tracker)
-	player := NewPlayer()
-	player.Nick = cr.Nick
-	player.Access = ADMIN
-	player.Email = cr.Email
-	player.ID = cnt
-	player.Status = LIVE
-	var errc error
-	player.Pass, errc = bcrypt.GenerateFromPassword([]byte(cr.Password), bcrypt.DefaultCost)
-	if errc != nil {
-		return "", nil, errc
-	}
-	storeKeys := []*datastore.Key{playerKey, trackerKey}
-	models := []interface{}{player, tracker}
-	if _, err = datastore.PutMulti(c, storeKeys, models); err != nil {
-		if uerr := deleteUniquePlayer(c, cr.Email, cr.Nick); uerr != nil {
-			c.Errorf("error deleting unique property %s", uerr)
-		}
 		return "", nil, err
 	}
 	tokenString, err := secure.CreateTokenString(c, playerKey.Encode())
@@ -517,6 +494,42 @@ func Create(c appengine.Context, cr Creation) (string, map[string]int, error) {
 		return "", nil, err
 	}
 	return tokenString, nil, nil
+}
+
+func createPlayer(c appengine.Context, nick, email, password string) (*datastore.Key, error) {
+	keyName, err := guid.GenUUID()
+	if err != nil {
+		return nil, err
+	}
+	cnt, err := counter.IncrementAndCount(c, "Player")
+	if err != nil {
+		return nil, err
+	}
+	playerKey := datastore.NewKey(c, "Player", keyName, 0, nil)
+	trackerKey := datastore.NewKey(c, "Tracker", keyName, 0, nil)
+	tracker := new(event.Tracker)
+	player := NewPlayer()
+	player.Nick = nick
+	player.Access = ADMIN
+	player.Email = email
+	player.ID = cnt
+	player.Status = LIVE
+	if len(password) > 0 {
+		var errc error
+		player.Pass, errc = bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if errc != nil {
+			return nil, errc
+		}
+	}
+	storeKeys := []*datastore.Key{playerKey, trackerKey}
+	models := []interface{}{player, tracker}
+	if _, err = datastore.PutMulti(c, storeKeys, models); err != nil {
+		if uerr := deleteUniquePlayer(c, email, nick); uerr != nil {
+			c.Errorf("error deleting unique property %s", uerr)
+		}
+		return nil, err
+	}
+	return playerKey, nil
 }
 
 func Tracker(c appengine.Context, playerStr, clanStr string) (event.Tracker, error) {
@@ -564,7 +577,7 @@ func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventL
 	}
 	// reset event trackers
 	doneCh := make(chan int)
-	go func() {
+	go func(done chan int) {
 		var clanStr string
 		var trackerKey *datastore.Key
 		switch loc {
@@ -585,8 +598,8 @@ func Events(c appengine.Context, playerStr, loc, cursorStr string) (event.EventL
 				c.Errorf("error saving global tracker %s", err)
 			}
 		}
-		doneCh <- 0
-	}()
+		done <- 0
+	}(doneCh)
 	filter := fmt.Sprintf("%s =", loc)
 	q := datastore.NewQuery("Event").Filter(filter, queryKey).Order("-Created").Limit(20)
 	//TODO move access to central management

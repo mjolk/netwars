@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"mj0lk.be/netwars/app"
 	"mj0lk.be/netwars/cache"
 	"strings"
 	"time"
@@ -185,14 +185,13 @@ func GetAll(c appengine.Context, programs map[string][]Program) error {
 }
 
 func LoadFromFile(c appengine.Context) error {
-	var errString string
-	file, err := ioutil.ReadFile("programs.json")
+	file, err := app.LoadFile("programs")
 	if err != nil {
 		return err
-
 	}
 	var jsontype []Program
 	json.Unmarshal(file, &jsontype)
+	var errString string
 	for _, program := range jsontype {
 		if err := CreateOrUpdate(c, &program); err != nil {
 			errString += fmt.Sprintf("%s\n", err.Error())

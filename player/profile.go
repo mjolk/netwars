@@ -100,6 +100,24 @@ type PublicPlayer struct {
 	Pass             []byte                        `json:"-"`
 }
 
+func (p *PublicPlayer) NickName() (nick string) {
+	if p.ClanKey != nil {
+		nick = fmt.Sprintf("%d <%s> %s", p.ID, p.ClanTag, p.Nick)
+	} else {
+		nick = fmt.Sprintf("%d %s", p.ID, p.Nick)
+	}
+	return nick
+}
+
+func (p *Profile) NickName() (nick string) {
+	if p.ClanTag != "" {
+		nick = fmt.Sprintf("%d <%s> %s", p.ID, p.ClanTag, p.Nick)
+	} else {
+		nick = fmt.Sprintf("%d %s", p.ID, p.Nick)
+	}
+	return nick
+}
+
 func (p *PublicPlayer) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(p, c); err != nil {
 		return err
@@ -107,9 +125,7 @@ func (p *PublicPlayer) Load(c <-chan datastore.Property) error {
 	if len(p.Avatar) > 0 {
 		p.AvatarThumb = fmt.Sprintf("%s=s%d", p.Avatar, THUMBSIZE)
 	}
-	if len(p.ClanTag) > 0 {
-		p.Nick = fmt.Sprintf("<%s> %s", p.ClanTag, p.Nick)
-	}
+	p.Nick = p.NickName()
 	p.Member = MemberName[p.MemberType]
 	p.AccessName = PlayerTypeName[p.Access]
 	p.StatusName = PlayerStatusName[p.Status]
@@ -164,9 +180,7 @@ func (p *Profile) Load(c <-chan datastore.Property) error {
 	if len(p.Avatar) > 0 {
 		p.AvatarThumb = fmt.Sprintf("%s=s%d", p.Avatar, THUMBSIZE)
 	}
-	if len(p.ClanTag) > 0 {
-		p.Nick = fmt.Sprintf("<%s> %s", p.ClanTag, p.Nick)
-	}
+	p.Nick = p.NickName()
 	p.AccessName = PlayerTypeName[p.Access]
 	p.StatusName = PlayerStatusName[p.Status]
 	return nil
@@ -176,16 +190,16 @@ func (p *Profile) Save(c chan<- datastore.Property) error {
 	return datastore.SaveStruct(p, c)
 }
 
-func GetPublic(c appengine.Context, playerStr string, player *PublicPlayer) (*datastore.Key, error) {
+func GetPublic(c appengine.Context, playerStr string, iplayer *PublicPlayer) (*datastore.Key, error) {
 	playerKey, err := datastore.DecodeKey(playerStr)
 	if err != nil {
 		return nil, err
 	}
-	if !cache.Get(c, playerKey.StringID(), player) {
-		if err := datastore.Get(c, playerKey, player); err != nil {
+	if !cache.Get(c, playerKey.StringID(), iplayer) {
+		if err := datastore.Get(c, playerKey, iplayer); err != nil {
 			return nil, err
 		}
-		cache.Add(c, playerKey.StringID(), player)
+		cache.Add(c, playerKey.StringID(), iplayer)
 	}
 	return playerKey, nil
 }
@@ -207,6 +221,7 @@ func Public(c appengine.Context, playerStr string, playerIdStr string, iplayer *
 }
 
 func List(c appengine.Context, pkeyStr, rangeStr, cursor string) (PlayerList, error) {
+	c.Debugf("list players cursor: %s", cursor)
 	q := datastore.NewQuery("Player").Project("Nick", "BandwidthUsage", "Status",
 		"Avatar", "ID", "ClanTag", "Access").Order("-BandwidthUsage").Limit(LIMIT)
 	iplayer := new(Player)

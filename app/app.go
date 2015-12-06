@@ -89,6 +89,15 @@ func NoAccess(w http.ResponseWriter) {
 	res.JSONf(w)
 }
 
+func LoadFile(name string) ([]byte, error) {
+	file, err := ioutil.ReadFile(name + ".json")
+	if err != nil {
+		return nil, err
+
+	}
+	return file, nil
+}
+
 var (
 	ImageTypes = []string{
 		"image/bmp",

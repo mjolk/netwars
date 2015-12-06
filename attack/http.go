@@ -11,10 +11,11 @@ func AttackPlayer(w http.ResponseWriter, r *http.Request, c app.Context) {
 	if err := app.DecodeJsonBody(r, &cfg); err != nil {
 		res = app.JSONResult{Success: false, StatusCode: 422, Error: err.Error()}
 	} else {
+		c.Debugf("attack cfg %+v possible types %d, %d, %d", cfg, BAL, ICE, INT)
 		var response AttackEvent
 		var err error
 		switch cfg.AttackType {
-		case BAL:
+		case BAL, MEM, BW:
 			response, err = Attack(c, c.User, cfg)
 		case ICE:
 			response, err = Ice(c, c.User, cfg)

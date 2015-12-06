@@ -75,12 +75,12 @@ func CreateTokenString(c appengine.Context, playerKey string) (string, error) {
 	return tokenString, nil
 }
 
-func ValidateToken(tokenString string) (string, error) {
+func ValidateToken(tokenString string, c appengine.Context) (string, error) {
 	var playerStr string
 	var err error
 	var token *jwt.Token
 	if appengine.IsDevAppServer() {
-		token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		token, err = jwt.Parse(tokenString[7:], func(token *jwt.Token) (interface{}, error) {
 			return []byte(JWTSECRET), nil
 		})
 	} else {
@@ -114,7 +114,7 @@ func Validator(inner app.EngineHandler) app.EngineHandler {
 		if ah := r.Header.Get("Authorization"); ah != "" {
 			// Should be a netwars token
 			if len(ah) > 7 && strings.ToUpper(ah[:7]) == "N3TWARS" {
-				playerStr, err := ValidateToken(ah)
+				playerStr, err := ValidateToken(ah, c)
 				if err != nil {
 					app.NoAccess(w)
 				} else {
